@@ -400,7 +400,7 @@ public:
 
         if (!awt.await_ready()) {
             stop_source_coro_frame stpsrc;
-            call_await_suspend(awt, stpsrc.get_handle());
+            call_await_suspend(awt, stpsrc.create_handle());
             run_thread(stpsrc.get_token());
         }
         return awt.await_resume();

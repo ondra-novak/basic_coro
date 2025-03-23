@@ -742,7 +742,7 @@ public:
      */
     static typename awaitable<T>::result create(_CB &&cb, _Allocator &alloc) {
         awaiting_callback *n = new(alloc) awaiting_callback(std::forward<_CB>(cb));
-        return n->_awt.create_result(n->get_handle());
+        return n->_awt.create_result(n->create_handle());
     }
 protected:
     ///constructor is not visible on the API
@@ -825,7 +825,7 @@ awaitable<bool> awaitable<T>::operator!()  {
         if (!frm) return {};
         std::construct_at(frm, this);
         frm->result = r.release();
-        return frm->src->await_suspend(frm->get_handle());
+        return frm->src->await_suspend(frm->create_handle());
     };
 
 }
@@ -837,7 +837,7 @@ awaitable<bool> awaitable<T>::has_value() {
         if (!frm) return {};
         std::construct_at(frm, this);
         frm->result = r.release();
-        return frm->src->await_suspend(frm->get_handle());
+        return frm->src->await_suspend(frm->create_handle());
     };
 }
 
@@ -852,7 +852,7 @@ awaitable<typename awaitable<T>::store_type *> awaitable<T>::begin() {
         if (!frm) return {};
         std::construct_at(frm, this);
         frm->result = r.release();
-        return frm->src->await_suspend(frm->get_handle());
+        return frm->src->await_suspend(frm->create_handle());
     };
 }
 
@@ -861,7 +861,7 @@ template<typename T>
 inline void awaitable<T>::wait() {
     if (!await_ready()) {
         sync_frame sync;
-        await_suspend(sync.get_handle()).resume();
+        await_suspend(sync.create_handle()).resume();
         sync.wait();
     }
 }

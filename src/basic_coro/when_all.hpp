@@ -87,7 +87,7 @@ class when_all {
         prepared_coro add(X &awt) {
             if (!awt.await_ready()) {
                 _cnt.count.fetch_add(1, std::memory_order_relaxed);
-                return call_await_suspend(awt, _cnt.get_handle());
+                return call_await_suspend(awt, _cnt.create_handle());
             }
             return {};
         }

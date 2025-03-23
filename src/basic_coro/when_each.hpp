@@ -158,7 +158,7 @@ protected:
             return {};
         } else {
             //if not - depend of type await_suspend
-            return call_await_suspend(awt, _slots[idx].get_handle());            
+            return call_await_suspend(awt, _slots[idx].create_handle());            
         }
     }
 

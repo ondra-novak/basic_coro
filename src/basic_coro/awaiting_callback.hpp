@@ -44,8 +44,10 @@ class awaiting_callback {
 
     ///contains example callback function with specified closure
     struct ExampleCB {
-        std::tuple<ClosureArgsExample...> _closure;
-        void operator()() {}
+        std::tuple<ClosureArgsExample...> _closure;        
+        void operator()(Awaiter &) {
+            throw invalid_state();
+        }
     };
 
     ///contains example coro frame with callback
@@ -89,9 +91,9 @@ public:
         std::construct_at(&_awt,std::move(awt));
         _awaiter_charged = true;
         if (_awt.await_ready()) {
-            return _frame.get_handle();
+            return _frame.create_handle();
         } else {
-            return call_await_suspend(awt,_frame.get_handle());
+            return call_await_suspend(awt,_frame.create_handle());
         }
     }
 
@@ -162,7 +164,7 @@ public:
      */
     void clear_frame() {
         if (_frame_charged) {
-            _frame.get_handle().destroy();
+            _frame.create_handle().destroy();
             _frame_charged = false;
         }
     }

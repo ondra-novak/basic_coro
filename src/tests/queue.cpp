@@ -9,6 +9,7 @@ coroutine<void> push_coro(coro_queue<char, 5> &q) {
         co_await q.push(c);
     }
     q.close();
+    co_return;
 }
 
 void queue_push_test() {
@@ -23,7 +24,7 @@ void queue_push_test() {
     }
 
     CHECK_EQUAL(out, "0123456789");
-    
+
 }
 
 coroutine<void> pop_coro(coro_queue<char, 10> &q, std::string expect) {
@@ -34,6 +35,7 @@ coroutine<void> pop_coro(coro_queue<char, 10> &q, std::string expect) {
         r = q.pop();
     }
     CHECK_EQUAL(out, expect);
+    co_return;
 }
 
 void queue_pop_test() {

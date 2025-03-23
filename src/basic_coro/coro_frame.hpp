@@ -40,13 +40,11 @@ protected:
     }
 
 public:
-    ///convert the frame to coroutine_handle.
-    std::coroutine_handle<> get_handle() {
+    ///create new handle for this coroutine frame
+    /** Each created handle should be properly used for resumption.
+     * Do not discard the handle value. */
+    std::coroutine_handle<> create_handle() {
         return std::coroutine_handle<>::from_address(this);
-    }
-    ///simulate done coroutine (done() return true)
-    void set_done() {
-        resume = nullptr;
     }
 };
 
@@ -91,9 +89,20 @@ class emulated_coro_frame {
         x->do_resume();
         co_return;
     }
+
+    ///default implementation. Implement own version with a code to perform
+    CRPT_virtual void do_resume()  {}
+    ///default implementation. It calls delete. You can overwrite this behaviour
+    CRPT_virtual void do_destroy() {
+        auto *me = static_cast<FrameImpl *>(this);
+        delete me;
+    }
 public:
 
-    std::coroutine_handle<> get_handle() {
+    ///create new handle for this coroutine frame
+    /** Each created handle should be properly used for resumption.
+     * Do not discard the handle value. */
+    std::coroutine_handle<> create_handle() {
         auto c = coro(autodestroy_ptr(static_cast<FrameImpl *>(this)));
         return c.get_handle();
     }
@@ -119,7 +128,6 @@ protected:
         return (*_cb)();
     }
     auto do_destroy() {
-        this->set_done();
         _cb.reset();
     }
 

@@ -61,7 +61,7 @@ inline awaiter_result<T> sync_await(T &&awt) {
     } else {
         if (awt.await_ready()) return awt.await_resume();
         sync_frame sf;
-        auto h = sf.get_handle();
+        auto h = sf.create_handle();
         call_await_suspend(awt,h);
         sf.wait();
     }

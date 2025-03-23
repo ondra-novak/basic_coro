@@ -126,7 +126,7 @@ class when_all {
                 //test whether we reached zero
                 if (count.fetch_sub(1, std::memory_order_relaxed)  == 1) {
                     //ensure that all results are visible
-                    count.load(std::memory_order_acquire);
+                    std::ignore=count.load(std::memory_order_acquire);
                     //resume awaiting coroutine
                     return std::move(r);
                 }

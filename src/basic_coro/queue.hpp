@@ -228,8 +228,8 @@ protected:
         slot<push_async_payload> *s = _push_queue.pop();
         if (s) {
             _queue.push(std::move(s->payload.val));
-            awaitable<void>::result r( s->payload.r);
-            resm = r();
+            awaitable<void>::result r2( s->payload.r);
+            resm = r2();
         }
         return r;
     }
@@ -285,7 +285,7 @@ protected:
 };
 
 
-template<typename T, unsigned int count, typename Lock = std::mutex>
+template<typename T, unsigned int count, typename Lock = empty_lockable>
 class coro_queue : public coro_basic_queue<limited_queue<T, count>, Lock > {};
 
 }

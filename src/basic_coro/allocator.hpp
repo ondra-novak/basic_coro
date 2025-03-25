@@ -28,6 +28,8 @@ public:
 };
 
 
+ constexpr objstdalloc default_allocator = {};
+
 static_assert(coro_allocator<objstdalloc>);
 
 

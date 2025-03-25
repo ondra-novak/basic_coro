@@ -70,6 +70,8 @@ protected:
     unsigned int _back = 0;
 };
 
+template<typename A,typename B>
+struct basic_queue_push_tag {};
 
 
 ///basic coroutine queue
@@ -79,10 +81,14 @@ protected:
  * @tparam Lock object to lock internals
  */
 template<typename Queue_Impl, basic_lockable Lock = empty_lockable>
-class coro_basic_queue {
+class basic_queue {
 public:
 
+    ///value type
     using value_type = typename Queue_Impl::value_type;
+
+    ///return value from push() - it is void, however it serves as tag type for space reservation
+    using void_t = basic_queue_push_tag<Queue_Impl, Lock>;
 
     ///Push to queue
     /**
@@ -99,7 +105,7 @@ public:
      */
     template<typename ... Args >
     requires(std::is_constructible_v<value_type, Args...>)
-    awaitable<void> push(Args && ... args) {
+    awaitable<void_t> push(Args && ... args) {
         prepared_coro resm;
         lock_guard _(_mx);
         if (_queue.is_full()) {
@@ -170,27 +176,24 @@ protected:
 
 
     struct push_async_payload {
-        union {
-            awaitable<void> *r;
-            coro_basic_queue *q;
-        };
+        awaitable<void_t>::result r;
         value_type val;
 
         template<typename ... Args>
         requires(std::is_constructible_v<value_type, Args...>)
-        push_async_payload(coro_basic_queue *me, Args && ... args):q(me),val(std::forward<Args>(args)...) {}
+        push_async_payload(Args && ... args):val(std::forward<Args>(args)...) {}
     };
 
     struct push_async_cb : slot<push_async_payload> {
+        basic_queue *me;
         template<typename ... Args>
         requires(std::is_constructible_v<value_type, Args...>)
-        push_async_cb (coro_basic_queue *me, Args && ... args):slot<push_async_payload>(me, std::forward<Args>(args)...) {}
-        prepared_coro operator()(awaitable<void>::result r) {
+        push_async_cb (basic_queue *me, Args && ... args):slot<push_async_payload>(std::forward<Args>(args)...),me(me) {}
+        prepared_coro operator()(awaitable<void_t>::result r) {
             if (!r) return {};
-            coro_basic_queue *me = this->payload.q;
             lock_guard _(me->_mx);
             if (me->_queue.is_full()) {
-                this->payload.r = r.release();
+                this->payload.r = std::move(r);
                 me->_push_queue.push(this);
                 return {};
             } else {
@@ -202,8 +205,8 @@ protected:
     friend struct push_async_cb;
 
     struct pop_async_cb: slot<typename awaitable<value_type>::result> {
-        coro_basic_queue *me;
-        pop_async_cb(coro_basic_queue *me):me(me) {}
+        basic_queue *me;
+        pop_async_cb(basic_queue *me):me(me) {}
         prepared_coro operator() (typename awaitable<value_type>::result r) {
             prepared_coro resm;
             lock_guard _(me->_mx);
@@ -228,8 +231,7 @@ protected:
         slot<push_async_payload> *s = _push_queue.pop();
         if (s) {
             _queue.push(std::move(s->payload.val));
-            awaitable<void>::result r( s->payload.r);
-            resm = r();
+            resm = s->payload.r();
         }
         return r;
     }
@@ -281,11 +283,16 @@ protected:
     link_list_queue<push_async_payload> _push_queue;
     bool _closed = false;
 
-
+public:
+    static constexpr auto push_awaitable_size = sizeof(push_async_cb);
 };
 
+template<typename A, typename B>
+struct awaitable_reserved_space<basic_queue_push_tag<A,B> > {
+    static constexpr std::size_t value = basic_queue<A,B>::push_awaitable_size;
+};
 
 template<typename T, unsigned int count, typename Lock = std::mutex>
-class coro_queue : public coro_basic_queue<limited_queue<T, count>, Lock > {};
+class coro_queue : public basic_queue<limited_queue<T, count>, Lock > {};
 
 }

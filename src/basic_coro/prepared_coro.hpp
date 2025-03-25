@@ -1,6 +1,7 @@
 #pragma once
-#include <coroutine>
 #include <memory>
+#include <coroutine>
+
 
 namespace coro {
 
@@ -10,33 +11,57 @@ public:
     ///construct empty
     prepared_coro() = default;
     ///construct by handle
-    prepared_coro(std::coroutine_handle<> h):_coro(h.address()) {}
+    prepared_coro(std::coroutine_handle<> h):_h(h) {}
+    //can be moved
+    prepared_coro(prepared_coro &&other):_h(other._h) {other._h = {};}
+    //creates group of prepared coroutines
+
+    ~prepared_coro() {
+        if (_h) _h.resume();
+    }
+
+    prepared_coro &operator=(prepared_coro &&other) {
+        if (this != &other) {
+            auto h = _h;
+            _h = other._h;
+            other._h = {};
+            if (h) h.resume();
+        }
+        return *this;
+    }
 
     ///test if empty
-    explicit operator bool() const {return static_cast<bool>(_coro);}
+    explicit operator bool() const {return static_cast<bool>(_h);}
+
+    std::coroutine_handle<> release() {
+        std::coroutine_handle<> h = _h;
+        _h = {};
+        return h;
+    }
+
+
 
     ///resume
     void resume(){
-        if (*this) std::coroutine_handle<>::from_address(_coro.release()).resume();
+        auto h = release();
+        if (h) h.resume();
     }
     ///resume
     void operator()() {
-        if (*this) std::coroutine_handle<>::from_address(_coro.release()).resume();
+        auto h = release();
+        if (h) h.resume();
     }
     ///destroy coroutine
     void destroy(){
-        if (*this) std::coroutine_handle<>::from_address(_coro.release()).destroy();
+        auto h = release();
+        if (h) h.destroy();
     }
     ///release handle and return it for symmetric transfer
     std::coroutine_handle<> symmetric_transfer(){
-        if (!_coro) return std::noop_coroutine();
-        return std::coroutine_handle<>::from_address(_coro.release());
+        auto h = release();
+        if (h) return h; else return std::noop_coroutine();
     }
 
-    std::coroutine_handle<> release() {
-        if (*this) return std::coroutine_handle<>::from_address(_coro.release());
-        else return {};
-    }
 
 protected:
     struct deleter{
@@ -45,7 +70,9 @@ protected:
         }
     };
 
-    std::unique_ptr<void,deleter> _coro;
+    std::coroutine_handle<> _h;
+
+ 
 };
         
           

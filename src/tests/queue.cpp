@@ -50,8 +50,33 @@ void queue_pop_test() {
     wall.wait();
 }
 
+coroutine<void> push_coro2(coro_queue<std::string, 5> &q) {
+    for (char c = '0'; c <='9'; ++c) {
+        co_await q.push(std::string(&c,1));
+    }
+    q.close();
+    co_return;
+}
+
+void queue_push_test2() {
+    coro_queue<std::string, 5> q;
+    push_coro2(q);
+    std::string out;
+
+    awaitable<std::string> r = q.pop();
+    while (r.has_value()) {
+        out.append(r.await_resume());
+        r = q.pop();
+    }
+
+    CHECK_EQUAL(out, "0123456789");
+
+}
+
+
 int main() {
     queue_push_test();
+    queue_push_test2();
     queue_pop_test();
     return 0;
 }

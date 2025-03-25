@@ -103,20 +103,7 @@ public:
         //if success, return it directly
         if (test) return test;
         //otherwise create slot and add self to waiting queue
-        return [this](awaitable<ownership>::result r) mutable {
-            //retrieve temp state
-            auto s = awaitable<ownership>::get_temp_state<slot>(r);
-            //is temp state is not available, exit (detached)
-            if (!s) return prepared_coro{};
-            //copy this (will be destroyed)
-            auto me = this;
-            //zero next
-            s->_next = nullptr;
-            //retrieve awaitable as pointer
-            s->_resume = r.release();
-            //add slot as request
-            return me->add_request(s);
-        };
+        return slot_cb(this);
     }
 
 
@@ -128,6 +115,20 @@ protected:
         //pointer to awaitable to be resolved when ownership is retrieved
         awaitable<ownership> *_resume;
 
+    };
+
+    struct slot_cb : slot{
+        mutex *_me;
+        slot_cb(mutex *me):_me(me) {}
+        prepared_coro operator()(awaitable<ownership>::result r) {
+            if (!r) return {};
+            //zero next
+            _next = nullptr;
+            //retrieve awaitable as pointer
+            _resume = r.release();
+            //add slot as request
+            return _me->add_request(this);
+        }
     };
 
     constexpr static slot doorman = {};

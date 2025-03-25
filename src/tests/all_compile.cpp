@@ -4,7 +4,8 @@
 
 
 template class coro::async_generator<int>;
-template class coro::coro_queue<int, 128>;
+template class coro::queue<int, 128>;
+template class coro::queue<int>;
 template class coro::multi_lock<10>;
 template class coro::awaitable<const int &>;
 template class coro::distributor<const int>;

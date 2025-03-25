@@ -4,7 +4,7 @@
 
 using namespace coro;
 
-coroutine<void> push_coro(coro_queue<char, 5> &q) {
+coroutine<void> push_coro(coro::queue<char, 5> &q) {
     for (char c = '0'; c <='9'; ++c) {
         co_await q.push(c);
     }
@@ -13,7 +13,7 @@ coroutine<void> push_coro(coro_queue<char, 5> &q) {
 }
 
 void queue_push_test() {
-    coro_queue<char, 5> q;
+    coro::queue<char, 5> q;
     push_coro(q);
     std::string out;
 
@@ -27,7 +27,7 @@ void queue_push_test() {
 
 }
 
-coroutine<void> pop_coro(coro_queue<char, 10> &q, std::string expect) {
+coroutine<void> pop_coro(coro::queue<char> &q, std::string expect) {
     std::string out;
     auto r = q.pop();
     while (co_await r.has_value()) {
@@ -39,7 +39,7 @@ coroutine<void> pop_coro(coro_queue<char, 10> &q, std::string expect) {
 }
 
 void queue_pop_test() {
-    coro_queue<char, 10> q;
+    coro::queue<char> q;
     awaitable<void> c1 = pop_coro(q, "02468");
     awaitable<void> c2 = pop_coro(q, "13579");
     when_all wall(c1,c2);
@@ -50,7 +50,7 @@ void queue_pop_test() {
     wall.wait();
 }
 
-coroutine<void> push_coro2(coro_queue<std::string, 5> &q) {
+coroutine<void> push_coro2(coro::queue<std::string, 5> &q) {
     for (char c = '0'; c <='9'; ++c) {
         co_await q.push(std::string(&c,1));
     }
@@ -59,7 +59,7 @@ coroutine<void> push_coro2(coro_queue<std::string, 5> &q) {
 }
 
 void queue_push_test2() {
-    coro_queue<std::string, 5> q;
+    coro::queue<std::string, 5> q;
     push_coro2(q);
     std::string out;
 

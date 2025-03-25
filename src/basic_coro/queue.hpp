@@ -2,9 +2,19 @@
 
 #include "awaitable.hpp"
 #include "basic_lockable.hpp"
-
+#include <deque>
 
 namespace coro {
+
+///Declaration of queue for coroutines
+/**
+ * @tparam T type of value pushed to and poped from the queue
+ * @tparam count queue limit. If this value is zero, the queue is unlimited
+ * @tparam Lock specifies internal lock type. Default value empty_lockable, which disables locking
+ *  Use std::mutex if you need to work in multithreaded environmnet
+ */
+template<typename T, unsigned int count = 0, typename Lock = empty_lockable>
+class queue;
 
 ///limited queue - helper class for coro_basic_queue
 /**
@@ -69,6 +79,52 @@ protected:
     unsigned int _front = 0;
     unsigned int _back = 0;
 };
+
+
+template<typename T>
+struct unlimited_queue {
+public:
+
+    using value_type = T;
+
+    ///determine whether queue is full
+    static constexpr bool is_full() {return false;}
+
+    ///determine whether queue is empty
+    constexpr bool is_empty() const {
+        return _q.empty();
+    }
+
+    ///push item
+    /**
+     * @param args arguments to construct item
+     *
+     * @note it doesn't check fullness, use is_full() before you call this function
+     *
+     */
+    template<typename ... Args>
+    constexpr void push(Args && ... args) {
+        _q.emplace_back(std::forward<Args>(args)...);
+    }
+
+    ///pop item
+    /**
+     * @return item removed from queue
+     *
+     * @note it doesn't check for emptyness, use is_empty() before calling of this function
+     */
+    constexpr T pop() {
+        T r = std::move(_q.front());
+        _q.pop_back();
+        return r;
+    }
+
+
+protected:
+
+    std::deque<T> _q;
+};
+
 
 template<typename A,typename B>
 struct basic_queue_push_tag {};
@@ -199,7 +255,7 @@ protected:
             } else {
                 return me->push2(std::move(this->payload.val));
             }
-        }    
+        }
     };
 
     friend struct push_async_cb;
@@ -212,7 +268,7 @@ protected:
             lock_guard _(me->_mx);
             if (me->_queue.is_empty()) {
                 if (!r) return {};
-                if (me->_closed) {                    
+                if (me->_closed) {
                     return (r =  std::nullopt);
                 }
 
@@ -226,7 +282,7 @@ protected:
     };
 
 
-    awaitable<value_type> pop2(prepared_coro &resm) {
+    awaitable<value_type> pop2_full(prepared_coro &resm) {
         awaitable<value_type> r ( _queue.pop());
         slot<push_async_payload> *s = _push_queue.pop();
         if (s) {
@@ -234,6 +290,13 @@ protected:
             resm = s->payload.r();
         }
         return r;
+    }
+    awaitable<value_type> pop2(prepared_coro &resm) {
+        if (_queue.is_full()) { //THIS removes whole branch if queue is unlimited
+            return pop2_full(resm);
+        } else {
+            return _queue.pop();
+        }
     }
     template<typename ... Args>
     prepared_coro push2(Args && ... args) {
@@ -249,7 +312,7 @@ protected:
         }
         return {};
     }
-    
+
 
     template<typename X>
     struct link_list_queue {
@@ -292,7 +355,11 @@ struct awaitable_reserved_space<basic_queue_push_tag<A,B> > {
     static constexpr std::size_t value = basic_queue<A,B>::push_awaitable_size;
 };
 
-template<typename T, unsigned int count, typename Lock = std::mutex>
-class coro_queue : public basic_queue<limited_queue<T, count>, Lock > {};
+template<typename T, unsigned int count, typename Lock>
+class queue : public basic_queue<limited_queue<T, count>, Lock > {};
+
+template<typename T, typename Lock>
+class queue<T,0,Lock> : public basic_queue<unlimited_queue<T>, Lock > {};
+
 
 }

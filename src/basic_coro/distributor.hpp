@@ -42,9 +42,9 @@ public:
      *
      * @see alert
      */
-    awaitable operator()(alert_flag_type &alert_flag) {
-        return [this,&alert_flag](result_object r){
-            add_listener(alert_flag, std::move(r));
+    awaitable operator()(alert_flag &aflag) {
+        return [this,&aflag](result_object r){
+            return add_listener(aflag, std::move(r));
         };
     }
 
@@ -53,11 +53,11 @@ public:
         _results.push_back({std::move(r), id});
 
     }
-    void add_listener(alert_flag_type &a, result_object r) {
+    prepared_coro add_listener(alert_flag &a, result_object r) {
         lock_guard _(_mx);
-        if (a) return;
+        if (a) return r.set_empty();
         _results.push_back({std::move(r), &a});
-
+        return {};
     }
 
     ///broadcast the value
@@ -157,7 +157,7 @@ public:
      *
      * @note the co_await always throws exception await_canceled_exception.
      */
-    prepared_coro alert(alert_flag_type &alert_flag) {
+    prepared_coro alert(alert_flag &alert_flag) {
         prepared_coro out;
         lock_guard _(_mx);
         alert_flag.set();

@@ -9,7 +9,7 @@
 using namespace coro;
 
 
-awaitable<int> cycle_coro(scheduler &sch, alert_flag_type &flag) {
+awaitable<int> cycle_coro(scheduler &sch, alert_flag &flag) {
     int count_cycles = 0;
     while (!flag.test_and_reset()) {
         count_cycles++;
@@ -21,7 +21,7 @@ awaitable<int> cycle_coro(scheduler &sch, alert_flag_type &flag) {
 
 
 awaitable<int> main_coro(scheduler &sch, std::chrono::milliseconds ms) {
-    alert_flag_type flag;
+    alert_flag flag;
 
     awaitable<int> c = cycle_coro(sch, flag);
     when_all s(c);

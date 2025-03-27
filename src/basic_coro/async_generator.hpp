@@ -59,7 +59,7 @@ public:
          * @return the function returns awaiter which returns void
          */
         template<typename X>
-        requires(std::is_constructible_v<T, X> || std::is_invocable_r_v<T, X>)
+        requires(is_awaitable_valid_result_type<T, X>)
         yield_awaiter yield_value(X &&val) {
             _started = true;
             _prom.return_value(std::forward<X>(val));
@@ -279,43 +279,5 @@ public:
 
 template<typename T, typename Param = void, coro_allocator Alloc = objstdalloc>
 using generator = async_generator<T, Param, Alloc>;
-
-
-template<typename T, typename Param, typename Allocator>
-async_generator<T, Param, Allocator> generator_agregator(Allocator &, std::vector<generator<T, Param> > g) {
-/*
-    std::vector<awaitable<T> > awts;
-    for (auto &x: g) awts.emplace(x.start());
-    when_each_dynamic s;
-    unsigned int cnt = 0;
-    for (auto &x: awts) s.add(x, cnt++);
-    while (cnt) {
-        unsigned int n = co_await s;
-        awaitable<T> &a = awts[n];
-        if (a.has_value()) {
-            std::exception_ptr e;
-            try {
-                co_yield a.await_resume();
-                a = g[n]();
-                s.add(a,n);
-                continue;
-            } catch (...) {
-                e = std::current_exception();
-            }
-            co_yield std::move(e);
-        }
-        --cnt;
-    }
-    */
-}
-
-
-
-template<typename T, typename Param>
-async_generator<T> generator_agregator(std::vector<generator<T, Param> > g) {
-    objstdalloc a;
-    return generator_agregator(std::move(g), a);
-
-}
 
 }

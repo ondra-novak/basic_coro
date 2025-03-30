@@ -114,19 +114,19 @@ protected:
         void operator()(awaitable<T> *ptr) const;
     };
     std::unique_ptr<awaitable<T>, deleter> _ptr;
-    
-    
+
+
 
 };
 
 ///allows to override reserved space in awaitable class for given T
 /**
  * @tparam parameter type of awaitable<T>
- * 
- * You need to overload this definition with own value (as a constant value). 
+ *
+ * You need to overload this definition with own value (as a constant value).
  * Ensure that both sides see the same definition. It is best to declare overload with the
  * type itself
- * 
+ *
  * @note You cannot set this value to be less than sizeof(T). Larger value is always used
  */
 template<typename T>
@@ -167,9 +167,9 @@ public:
     using result = awaitable_result<T>;
     ///allows to use awaitable to write coroutines
     using promise_type = coroutine<T>::promise_type;
-    
+
     ///table of control methods for generic callback
-    struct CBVTable {        
+    struct CBVTable {
         ///call the callback
         /**
          * @param inst pointer to an instance
@@ -178,14 +178,14 @@ public:
         prepared_coro (*call)(void *inst, result);
         ///destroy callback (end lifetime)
         /**
-         * @param inst pointer to an instance to destroy 
+         * @param inst pointer to an instance to destroy
          */
         void (*destroy)(void *inst);
         ///move callback
         /**
          * @param from pointer to an instance to move from
          * @param to pointer to uninitialized space where to move instance. Function starts lifetime at this place
-         * 
+         *
          * @note original instance is still active (but in moved out state)
          */
         void (*move)(void *from, void *to);
@@ -238,7 +238,7 @@ public:
     template<typename ... Args>
     requires (std::is_constructible_v<store_type, Args...>  && (sizeof...(Args) != 1 || (
                 (!std::is_same_v<std::remove_reference_t<Args>, awaitable> && ...)
-                && (!std::is_base_of_v<coroutine_tag, Args> && ...)                
+                && (!std::is_base_of_v<coroutine_tag, Args> && ...)
             )))
     awaitable(Args &&... args)
         :_state(value),_value(std::forward<Args>(args)...) {}
@@ -259,7 +259,7 @@ public:
         if constexpr(sizeof(Fn) <= callback_max_size) {
             new(_callback_space) Fn(std::forward<Fn>(fn));
             _vtable = &cbvtable<Fn>;
-            
+
         } else {
             new(_callback_space) DynamicAllocatedCB<Fn>(std::forward<Fn>(fn));
             _vtable = &cbvtable<DynamicAllocatedCB<Fn> >;
@@ -285,11 +285,11 @@ public:
     ///awaitable can be moved
     awaitable(awaitable &&other) {
         switch (other._state) {
-            case no_value:_state = no_value; break;            
+            case no_value:_state = no_value; break;
             case value: std::construct_at(&_value, std::move(other._value));_state = value;break;
             case exception: std::construct_at(&_exception, std::move(other._exception));_state = exception;break;
             case coro: std::construct_at(&_coro, std::move(other._coro));_state = coro;break;
-            default: 
+            default:
                 _vtable = other._vtable;
                 _vtable->move(other._callback_space, _callback_space);
         }
@@ -309,37 +309,24 @@ public:
 
     ///returns whether the object has a value
     /**
-     * @return the result is awaitable, so you can co_await to retrieve
-     * whether the awaitable receives a value (without throwing an exception)
+     * The object must be in resolved state. Use co_await ready() if not
      */
-    awaitable<bool> has_value();
+    bool has_value() const {
+        return _state == value || _state == exception;
+    }
 
-    ///returns whether the object has no value
+    ///returns whether there is an exception in the object
     /**
-     * @return the result is awaitable, so you can co_await to retrieve
-     * whether the awaitable receives a value (without throwing an exception)
+     * The object must be in resolved state. Use co_await ready() if not
      */
-    awaitable<bool> operator!() ;
+    bool has_exception() const {
+        return _state == exception;
+    }
+
 
     ///returns true if the awaitable is resolved
     bool is_ready() const {
         return await_ready();
-    }
-
-    ///returns iterator a value
-    /**
-     * @return iterator to value if value is stored there, otherwise returns end
-     * @note the function is awaitable, you can co_await if the value is not yet available.
-     */
-    awaitable<store_type *> begin();
-
-    ///returns iterator to end
-    /**
-     * @return iterator to end
-     * @note this function is not awaitable it always return valid end()
-     */
-    store_type *end()  {
-        return &_value+1;
     }
 
 
@@ -444,6 +431,16 @@ public:
         return await_resume();
     }
 
+    ///allows to await on this awaitable without processing result
+    /**
+     * @code
+     * co_await awt.ready();
+     * @endcode
+     *
+     * @return awaitable
+     */
+    awaitable<void> ready();
+
     ///evaluate asynchronous operation, waiting for result synchronously
     void wait();
 
@@ -462,9 +459,9 @@ public:
             case no_value: return std::nullopt;
             case value:return awaitable(std::in_place, _value);
             case exception:return awaitable(_exception);
-            
+
         }
-        
+
     }
     ///return if there is someone awaiting on object
     /**
@@ -496,10 +493,23 @@ public:
     /** This prevents to execute prepared asynchronous operation. You need
      * to invoke this function if you requested only non-blocking part of
      * operation and don't want to contine asynchronously
+     *
+     * If the state is not pending, function does nothing
      */
     void cancel() {
         if (_owner) throw invalid_state();
-        destroy_state();
+        switch (_state) {
+            case no_value:
+            case value:
+            case exception: return;
+            case coro:
+                _coro.cancel();
+                std::destroy_at(&_coro);
+                break;
+            default:
+                _vtable->destroy(_callback_space);
+                break;
+        }
         _state = no_value;
     }
 
@@ -628,41 +638,27 @@ protected:
 
 
 
-    template<bool test>
-    struct read_state_frame: coro_frame<read_state_frame<test> >{
+
+
+    struct ready_frame: coro_frame<ready_frame> {
         awaitable *src;
-        awaitable_result<bool> r = {};
+        awaitable_result<void> r = {};
 
-        read_state_frame(awaitable *src):src(src) {}
-
-        prepared_coro operator()(awaitable_result<bool> r) {
+        ready_frame(awaitable *src):src(src) {};
+        prepared_coro operator()(awaitable_result<void> r) {
             if (!r) return {};
             this->r = std::move(r);
             return src->await_suspend(this->create_handle());
         }
 
-        void do_resume();
+        prepared_coro do_resume();
     };
 
-    struct read_ptr_frame: coro_frame<read_ptr_frame>{
-        awaitable *src;
-        awaitable_result<store_type *> r = {};
 
-        read_ptr_frame(awaitable *src):src(src) {}
-
-        prepared_coro operator()(awaitable_result<store_type *> r) {
-            if (!r) return {};
-            this->r = std::move(r);
-            return src->await_suspend(this->create_handle());
-        }
-
-        void do_resume();
-    };
-
-    friend class awaitable_result<T>;    
+    friend class awaitable_result<T>;
     friend struct details::promise_type_base<T>;
     friend struct details::promise_type_base_generic<T>;
-    
+
 };
 
 
@@ -742,43 +738,10 @@ inline prepared_coro awaitable<T>::set_callback_internal(_Callback &&cb, _Alloca
 }
 
 
-template<typename T>
-template<bool test>
-void awaitable<T>::read_state_frame<test>::do_resume() {
-           bool n = src->_state != no_value;
-           r(n == test);
-}
 
 template<typename T>
-void awaitable<T>::read_ptr_frame::do_resume() {
-    if (src->_state == value) {
-        r(&src->_value);
-    } else if (src->_state == exception) {
-        r = src->_exception;
-    } else {
-        r(&src->_value+1);
-    }
-}
-
-template<typename T>
-awaitable<bool> awaitable<T>::operator!()  {
-    if (await_ready()) {return _state == no_value;}
-    return read_state_frame<false>(this);
-
-}
-template<typename T>
-awaitable<bool> awaitable<T>::has_value() {
-    if (await_ready()) {return _state != no_value;}
-    return read_state_frame<true>(this);
-}
-
-template<typename T>
-awaitable<typename awaitable<T>::store_type *> awaitable<T>::begin() {
-    if (await_ready()) {
-        if (_state == exception) std::rethrow_exception(_exception);
-        return &_value;
-    }
-    return read_ptr_frame(this);
+prepared_coro awaitable<T>::ready_frame::do_resume() {
+    return r();
 }
 
 

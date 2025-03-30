@@ -89,15 +89,8 @@ public:
      *
      */
     prepared_coro await_cont(Awaiter &awt) {
-        clear_awaiter();
-        if (!_frame_charged) throw invalid_state();
-        std::construct_at(&_awt,std::move(awt));
-        _awaiter_charged = true;
-        if (_awt.await_ready()) {
-            return _frame.create_handle();
-        } else {
-            return call_await_suspend(awt,_frame.create_handle());
-        }
+        prepare_await(awt);
+        return await_on_prepared();
     }
 
     ///continue in await operation
@@ -194,6 +187,78 @@ public:
     void clear() {
         clear_frame();
         clear_awaiter();
+    }
+
+    ///prepares await operation by moving awaiter into internal state
+    /** This function can be called before the  frame is initialized.
+     * The frame can be initialized by run_await later
+     *
+     * @param awt awaiter to move in
+     *
+     * @note this function allows to check for non-blocking result. If
+     * result is not ready, it can move awaiter to internal state to
+     * be prepared for execution of asynchronous operation
+     *
+     */
+    void prepare_await(Awaiter &awt) {
+        clear_awaiter();
+        std::construct_at(&_awt,std::move(awt));
+        _awaiter_charged = true;
+    }
+    ///prepares await operation by moving awaiter into internal state
+    /** This function can be called before the  frame is initialized.
+     * The frame can be initialized by run_await later
+     *
+     * @param awt awaiter to move in
+     *
+     * @note this function allows to check for non-blocking result. If
+     * result is not ready, it can move awaiter to internal state to
+     * be prepared for execution of asynchronous operation
+     *
+     */
+    void prepare_await(Awaiter &&awt) {
+        prepare_await(awt);
+    }
+
+    ///await on prepared awaiter
+    prepared_coro await_on_prepared() {
+        if (!_frame_charged) throw std::logic_error("no callback has been defined");
+        if (_awt.await_ready()) {
+            return _frame.create_handle();
+        } else {
+            return call_await_suspend(_awt,_frame.create_handle());
+        }
+    }
+
+    ///await on prepared awaiter, define callback
+    template<std::invocable<Awaiter &> CB>
+    requires (sizeof(coro_frame_cb<CallCB<CB> >) <= required_space)
+    prepared_coro await_on_prepared(CB &&cb) {
+        clear_frame();
+        new(_space) coro_frame_cb<CallCB<CB> >(CallCB<CB>(_awt, std::forward<CB>(cb)));
+        _frame_charged = true;
+        return await_on_prepared();
+    }
+
+    ///retrieves internal awaiter
+    Awaiter *get_awaiter() {
+        if (_awaiter_charged) return &_awt;
+        else return nullptr;
+    }
+
+    class AutoCancelDeleter {
+    public:
+        template<typename X>
+        void operator()(X *p) {
+            auto a = p->get_awaiter();
+            if (a) a->cancel();
+        }
+    };
+
+    ///for awaitable<X> awaiter allows to create an object which
+    /// causes calling of cancel on awaitable if the async lambda function is not executed
+    std::unique_ptr<awaiting_callback, AutoCancelDeleter> get_auto_cancel() {
+        return {this,{}};
     }
 
 protected:

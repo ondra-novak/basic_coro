@@ -21,7 +21,7 @@ namespace details {
         awaitable<T> *_target = {};
 
         template<typename X>
-        requires(std::is_convertible_v<X, T> || std::is_invocable_r_v<T, X> )
+        requires(is_awaitable_valid_result_type<T, X>)
         void return_value(X &&x) {
             if (_target) _target->set_value(std::forward<X>(x));
         }
@@ -278,5 +278,19 @@ public:
 };
 
 
+///this class helps to write a function, which is called once the coroutine is destroyed
+template<std::invocable<> Fn>
+class on_destroy {
+public:
+    on_destroy(Fn &&fn):_fn(fn) {}
+    ~on_destroy() {_fn();}
+    on_destroy(const on_destroy &) = delete;
+    on_destroy &operator=(const on_destroy &) = delete;
+protected:
+    Fn _fn;
+};
+
+template<std::invocable<> Fn>
+on_destroy(Fn) -> on_destroy<Fn>;
 
 }

@@ -24,7 +24,7 @@ awaitable<void> coro_test(distributor<int, empty_lockable> &dist, const void *id
     CHECK_EQUAL(i, 40);
 }
 
-awaitable<void> coro_alert_test(distributor<int, empty_lockable> &dist, alert_flag_type &b) {
+awaitable<void> coro_alert_test(distributor<int, empty_lockable> &dist, alert_flag &b) {
 
     int p = 10;
     while (true) {
@@ -40,8 +40,8 @@ int main() {
     bool ident_a = false;
     bool ident_b = false;
     bool ident_c = false;;
-    alert_flag_type alt;
-    alert_flag_type alt2;
+    alert_flag alt;
+    alert_flag alt2;
     distributor<int, empty_lockable> dist;
     awaitable<void> a = coro_test(dist, &ident_a);
     awaitable<void> b = coro_test(dist, &ident_b);

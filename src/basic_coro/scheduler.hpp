@@ -148,10 +148,10 @@ public:
             _sch.schedule_at(std::move(r), std::move(tp), ident);
         };
     }
-    awaitable<void> sleep_until_alertable(alert_flag_type alert_flag, _TP tp) {
-        return [this,tp=std::move(tp),&alert_flag](result_object r) mutable -> prepared_coro {
-            if (alert_flag) return r();
-            _sch.schedule_at(std::move(r), std::move(tp), &alert_flag);
+    awaitable<void> sleep_until_alertable(alert_flag aflag, _TP tp) {
+        return [this,tp=std::move(tp),&aflag](result_object r) mutable -> prepared_coro {
+            if (aflag) return r();
+            _sch.schedule_at(std::move(r), std::move(tp), &aflag);
             return prepared_coro();
         };
     }
@@ -163,7 +163,7 @@ public:
     }
     template<typename Dur>
     requires(requires(_TP tp, Dur dur){{tp+dur}->std::convertible_to<_TP>;})
-    awaitable<void> sleep_for_alertable(alert_flag_type &alert_flag, Dur dur) {
+    awaitable<void> sleep_for_alertable(alert_flag &alert_flag, Dur dur) {
         return sleep_until_alertable(alert_flag,  get_current_time()+dur);
     }
     ///retrive first scheduled time
@@ -230,9 +230,9 @@ public:
       * coroutine is sleeping, it is waken up immediately. Note that the coroutine is still
       * executed by the scheduler (in this thread)
       */
-     void alert(alert_flag_type &alert_flag) {
-         alert_flag.set();
-         _sch.set_time(&alert_flag, std::chrono::system_clock::now());
+     void alert(alert_flag &aflag) {
+         aflag.set();
+         _sch.set_time(&aflag, std::chrono::system_clock::now());
      }
 
      ///retrieves current time
@@ -290,14 +290,14 @@ public:
      *
      * @see alert
      */
-    awaitable<void> sleep_until_alertable(alert_flag_type &alert_flag, std::chrono::system_clock::time_point tp) {
-        return [this, tp, &alert_flag](result_object r) mutable -> prepared_coro {
+    awaitable<void> sleep_until_alertable(alert_flag &aflag, std::chrono::system_clock::time_point tp) {
+        return [this, tp, &aflag](result_object r) mutable -> prepared_coro {
             std::lock_guard _(_mx);
-            if (alert_flag) {
-                return r();
+            if (aflag) {
+                return r.set_empty();
             }
             if (tp < _sch.get_first_scheduled_time()) _cv.notify_all();
-            _sch.schedule_at(std::move(r),std::move(tp),&alert_flag);
+            _sch.schedule_at(std::move(r),std::move(tp),&aflag);
             return prepared_coro{};
         };
     }
@@ -326,7 +326,7 @@ public:
      * @see alert
      */
     template<typename A, typename B>
-    awaitable<void> sleep_for_alertable(alert_flag_type &alert_flag, std::chrono::duration<A,B> dur) {
+    awaitable<void> sleep_for_alertable(alert_flag &alert_flag, std::chrono::duration<A,B> dur) {
         return sleep_until_alertable(alert_flag,  std::chrono::system_clock::now()+dur);
     }
 
@@ -482,7 +482,7 @@ public:
      * coroutine is sleeping, it is waken up immediately. Note that the coroutine is still
      * executed by the scheduler (in this thread)
      */
-    void alert(alert_flag_type &alert_flag) {
+    void alert(alert_flag &alert_flag) {
         std::lock_guard _(_mx);
         alert_flag.set();
         _sch.set_time(&alert_flag, std::chrono::system_clock::now());

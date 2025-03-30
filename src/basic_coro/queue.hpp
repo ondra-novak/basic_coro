@@ -347,7 +347,7 @@ protected:
     bool _closed = false;
 
 public:
-    static constexpr auto push_awaitable_size = sizeof(push_async_cb);
+    static constexpr std::size_t push_awaitable_size = sizeof(push_async_cb);
 };
 
 template<typename A, typename B>

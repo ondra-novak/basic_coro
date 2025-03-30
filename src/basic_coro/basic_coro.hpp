@@ -12,3 +12,4 @@
 #include "async_generator.hpp"
 #include "mutex.hpp"
 #include "queue.hpp"
+#include "aggregator.h"

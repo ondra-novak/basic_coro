@@ -64,6 +64,28 @@ struct awaiter_result_def<T> {
 template<is_awaitabe T>
 using awaiter_result = typename awaiter_result_def<T>::type;
  
+template<typename T>
+struct temporary_awaiter_def;
+
+struct empty_type {};
+
+template<is_awaiter T>
+struct temporary_awaiter_def<T> {
+    using type = empty_type;
+};
+
+template<has_co_await T>
+struct temporary_awaiter_def<T> {
+    using type = decltype(std::declval<T>().operator co_await());
+};
+
+template<has_global_co_await T>
+struct temporary_awaiter_def<T> {
+    using type = decltype(operator co_await(std::declval<T>()));
+};
+
+template<is_awaitabe T>
+using temporary_awaiter_type = typename temporary_awaiter_def<T>::type;
 
 
 ///tests whether object T  can be used as member function pointer with Obj as pointer

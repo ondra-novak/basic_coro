@@ -347,12 +347,8 @@ protected:
     bool _closed = false;
 
 public:
-    static constexpr std::size_t push_awaitable_size = sizeof(push_async_cb);
-};
-
-template<typename A, typename B>
-struct awaitable_reserved_space<basic_queue_push_tag<A,B> > {
-    static constexpr std::size_t value = basic_queue<A,B>::push_awaitable_size;
+    static constexpr std::size_t push_awaitable_size() {return sizeof(push_async_cb);}
+    friend struct awaitable_reserved_space<basic_queue_push_tag<Queue_Impl, Lock> >;
 };
 
 template<typename T, unsigned int count, typename Lock>
@@ -360,6 +356,12 @@ class queue : public basic_queue<limited_queue<T, count>, Lock > {};
 
 template<typename T, typename Lock>
 class queue<T,0,Lock> : public basic_queue<unlimited_queue<T>, Lock > {};
+
+
+template<typename A, typename B>
+struct awaitable_reserved_space<basic_queue_push_tag<A,B> > {
+    static constexpr std::size_t value = sizeof(typename basic_queue<A, B>::push_async_cb);
+};
 
 
 }

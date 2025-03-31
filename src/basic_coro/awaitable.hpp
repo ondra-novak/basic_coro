@@ -209,7 +209,7 @@ public:
      * @tparam Fn function (closure object)
      */
     template<typename Fn>
-    static constexpr CBVTable cbvtable = {
+    static constexpr auto cbvtable = CBVTable {
         [](void *me, result r)->prepared_coro{
             if constexpr(std::is_convertible_v<std::invoke_result_t<Fn, result>, prepared_coro>) {
                 return (*reinterpret_cast<Fn *>(me))(std::move(r));

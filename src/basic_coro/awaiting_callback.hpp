@@ -30,8 +30,8 @@ class awaiting_callback {
         ///and the actuall callback
         CB _cb;
         ///actual callback is called with argumenr awaiter
-        void operator()() {
-            _cb(_awt);
+        auto operator()() {
+            return _cb(_awt);
         }
 
         ///construct extended callback function

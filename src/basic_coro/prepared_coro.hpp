@@ -1,6 +1,7 @@
 #pragma once
 #include <memory>
 #include <coroutine>
+#include "co_switch.hpp"
 
 
 namespace coro {
@@ -39,13 +40,23 @@ public:
         return h;
     }
 
-
-
     ///resume
     void resume(){
         auto h = release();
         if (h) h.resume();
     }
+
+    ///resume lazily
+    /**
+     * Ensures that resume will not create additional stack frame.
+     * Resume is postponed until code reaches initial stack level
+     * @note this function is effective only if another lazy_resume
+     * is used during pefroming first lazy_resume (in recursion)
+     */
+    void lazy_resume() {
+        co_switch::lazy_resume(release());
+    }
+
     ///resume
     void operator()() {
         auto h = release();
@@ -72,10 +83,10 @@ protected:
 
     std::coroutine_handle<> _h;
 
- 
+
 };
-        
-          
+
+
 
 
 }

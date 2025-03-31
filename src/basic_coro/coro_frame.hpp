@@ -1,4 +1,5 @@
 #pragma once
+#include "prepared_coro.hpp"
 #include <coroutine>
 #include <memory>
 #include <optional>
@@ -7,6 +8,8 @@ namespace coro {
 
 #define CRPT_virtual
 #define CRPT_override
+
+
 
 ///A format of generic coroutine frame
 /**
@@ -22,9 +25,17 @@ namespace coro {
 template<typename FrameImpl>
 class basic_coro_frame {
 protected:
-    void (*resume)(std::coroutine_handle<>) = [](std::coroutine_handle<> h) {
+
+
+    void (*resume)(std::coroutine_handle<>) = [](std::coroutine_handle<> h) noexcept {
         auto me = reinterpret_cast<basic_coro_frame *>(h.address());
-        static_cast<FrameImpl *>(me)->do_resume();
+        auto frm = static_cast<FrameImpl *>(me);
+        using Ret = decltype(frm->do_resume());
+        if constexpr(std::is_same_v<Ret, prepared_coro>) {
+            frm->do_resume().lazy_resume();
+        } else {
+            frm->do_resume();
+        }
     };
     void (*destroy)(std::coroutine_handle<>) = [](std::coroutine_handle<> h) {
         auto *me = reinterpret_cast<basic_coro_frame *>(h.address());
@@ -48,8 +59,9 @@ public:
     }
 };
 
+
 ///emmulates coro_frame by a auxularity coroutine
-/** 
+/**
  * This implementation is intended for compilers, that doesn't implement well known coroutine frame layout
  * Note that there are differences. You cannot set_done() such coroutine and each get_handle returns
  * different handle, which should be used for either triggering action, or must be destroyed
@@ -86,7 +98,12 @@ class emulated_coro_frame {
 
     static adhoccoro coro(autodestroy_ptr p) {
         FrameImpl *x = p.release();
-        x->do_resume();
+        using Ret = decltype(x->do_resume());
+        if constexpr(std::is_same_v<Ret, prepared_coro>) {
+            x->do_resume().lazy_resume();
+        } else {
+            x->do_resume();
+        }
         co_return;
     }
 
@@ -99,12 +116,19 @@ class emulated_coro_frame {
     }
 public:
 
+    std::coroutine_handle<> (*_create_handle_fn)(void *frame_ptr);
+
+    emulated_coro_frame():_create_handle_fn([](void *frame_ptr){
+        emulated_coro_frame *f = reinterpret_cast<emulated_coro_frame *>(frame_ptr);
+        auto c = coro(autodestroy_ptr(static_cast<FrameImpl *>(f)));
+        return c.get_handle();
+    }) {}
+
     ///create new handle for this coroutine frame
     /** Each created handle should be properly used for resumption.
      * Do not discard the handle value. */
     std::coroutine_handle<> create_handle() {
-        auto c = coro(autodestroy_ptr(static_cast<FrameImpl *>(this)));
-        return c.get_handle();
+        return _create_handle_fn(this);
     }
 };
 

@@ -59,98 +59,165 @@ public:
 
     ///construct the callback space
     awaiting_callback() {};
-    ///object can be copied, but because it is frame, no content is copied
-    awaiting_callback(const awaiting_callback &)
-        :_frame_charged(false),_awaiter_charged(false) {}
-    ///assigment has no effect, cannot copy internal state
-    awaiting_callback &operator=(const awaiting_callback &) {
-        return *this;
-    }
     ///dtor
     ~awaiting_callback() {
-        clear_frame();
+        clear_callback();
         clear_awaiter();
     }
-
-    ///continue in await operation
+    ///move constructor moves the stored awaiter, but it cannot move callback
     /**
-     * Starts await operation which is contination of previous await operation.
-     * This function expects that callback has been set by function await(). This
-     * function can be used inside of the callback to repeat await operation (the
-     * callback is called again when await operation is complete)
-     *
-     * @param awt awaiter to await on
-     * @return prepared coro holding result of await_suspend operation
-     *  if a handle is returned. It can return handle to callback if
-     *  the operation is already complete. You should resume the
-     *  prepared_coro in order to finish asynchronous operation
-     *
-     * @exception invalid_state await_cont() called without initial await()
-     *
+     * moves just stored awaiter. The callback itself is left unmoved and it is eventually destroyed
+     * in original object.  
      */
-    prepared_coro await_cont(Awaiter &awt) {
-        prepare_await(awt);
-        return await_on_prepared();
+    awaiting_callback(awaiting_callback &&other):_frame_charged(false), _awaiter_charged(other._awaiter_charged) {
+        if (_awaiter_charged) {
+            std::construct_at(&_awt, std::move(other._awt));
+            other.clear_awaiter();
+        }
+    } 
+
+    ///Sets awaiter
+    /**
+     * @param awt an awaiter instance ready to be initiated for await_suspend. The awaiter must 
+     * be movable. 
+     * 
+     * @note any previously set awaiter is destroyed 
+     */
+    void set_awaiter(Awaiter &awt) {
+        clear_awaiter();
+        std::construct_at(&_awt,std::move(awt));
+        _awaiter_charged = true;
     }
 
-    ///continue in await operation
+    ///Sets awaiter
     /**
-     * Starts await operation which is contination of previous await operation.
-     * This function expects that callback has been set by function await(). This
-     * function can be used inside of the callback to repeat await operation (the
-     * callback is called again when await operation is complete)
-     *
-     * @param awt awaiter to await on
-     * @return prepared coro holding result of await_suspend operation
-     *  if a handle is returned. It can return handle to callback if
-     *  the operation is already complete. You should resume the
-     *  prepared_coro in order to finish asynchronous operation
-     * @exception invalid_state await_cont() called without initial await()
-     *
+     * @param awt an awaiter instance ready to be initiated for await_suspend. The awaiter must 
+     * be movable. 
+     * 
+     * @note any previously set awaiter is destroyed 
      */
-    prepared_coro await_cont(Awaiter &&awt) {
-        return await_cont(awt);
+    void set_awaiter(Awaiter &&awt) {
+        set_awaiter(awt);
     }
 
-    ///initiate await operation
+    template<typename X>
+    requires(has_co_await<X> && std::is_same_v<temporary_awaiter_type<X>, Awaiter>)
+    void set_awaiter(X &&awt) {
+        clear_awaiter();
+        new(&_awt) Awaiter(awt.operator co_await());
+    }
+
+    template<typename X>
+    requires(has_global_co_await<X> && std::is_same_v<temporary_awaiter_type<X>, Awaiter>)
+    void set_awaiter(X &&awt) {
+        clear_awaiter();
+        new(&_awt) Awaiter(operator co_await(awt));
+    }
+
+    ///sets callback
     /**
-     * @param awt awaiter to await on
-     * @param cb callback with a closure. The closure must occupy less or equal calculated space
-     * @return prepared coro holding result of await_suspend operation
-     *  if a handle is returned. It can return handle to callback if
-     *  the operation is already complete. You should resume the
-     *  prepared_coro in order to finish asynchronous operation
-     *
-     * @note it is allowed to reuse this object to another await operation. You only
-     * need to prevent to initiate await operation while other is still pending
+     * @param cb callback instance, its closure must be small enough to fit into
+     * reserved space in the object (specified by template Args )
+     * @note callback must be movable
+     * 
      */
     template<std::invocable<Awaiter &> CB>
-    requires (sizeof(coro_frame_cb<CallCB<CB> >) <= required_space)
-    prepared_coro await(Awaiter &awt, CB &&cb) {
-        clear_frame();
+    requires(sizeof(coro_frame_cb<CallCB<CB> >) <= required_space)
+    void set_callback(CB &&cb) {
+        clear_callback();
         new(_space) coro_frame_cb<CallCB<CB> >(CallCB<CB>(_awt, std::forward<CB>(cb)));
         _frame_charged = true;
+    }
+
+    ///Fire await operation on already set awaiter and callback
+    /**
+     * Causes that await_suspend is called on the prepared awaiter. If the
+     * awaiter is marked ready, it immediately initiates the callack. If the
+     * awaiter is not ready, await_suspend is called with internal handle, which
+     * causes that callback will be called once the operation is complete
+     * 
+     * @return returns prepared coroutine handle. This could be internal handle
+     * if awaiter has been marked ready, or any result returned from await_suspend.
+     * Return value can be empty.
+     * 
+     * @note in case of awaiter is marked ready, the callback is not executed now. It
+     * is returned as internal handle from the function. You need to resume the
+     * handle to finish completion. The optimal way is to move return value outside
+     * any held lock and resume it there
+     * 
+     */
+    coro::prepared_coro await() {
+        if (!_frame_charged) throw std::logic_error("Callback was not set");
+        if (!_awaiter_charged) throw std::logic_error("Awaiter was not set");
+        if (_awt.await_ready()) {
+            return _frame.create_handle();
+        } else {
+            return call_await_suspend(_awt, _frame.create_handle());
+        }
+    }
+
+    /// await in set awaiter with specified callback
+    /** 
+     * Just combines set_callback() and await(). 
+     * @return see await()
+     */
+    template<std::invocable<Awaiter &> CB>
+    requires(sizeof(coro_frame_cb<CallCB<CB> >) <= required_space)
+    coro::prepared_coro await(CB &&cb) {
+        set_callback(std::forward<CB>(cb));
+        return await();
+    }
+
+    ///Continue in await operation with different awaiter
+    /** 
+     * This can be used to repeat asynchronous operation if previous 
+     * operation was not fully completed
+     * @param awt compatible awaiter, see set_awaiter()
+     * @return see await()
+     */
+    template<typename AWT>
+    coro::prepared_coro await_cont(AWT &&awt) {
+        set_awaiter(std::forward<AWT>(awt));
+        return await();
+    }
+
+   
+    ///Full await on awaiter with callback
+    /**
+     * @param awt awaiter. See set_awaiter()
+     * @param cb callback. See set_callback()
+     * @return see await()
+     */
+    template<std::invocable<Awaiter &> CB>
+    requires(sizeof(coro_frame_cb<CallCB<CB> >) <= required_space)
+    coro::prepared_coro await(Awaiter &awt, CB &&cb) {
+        set_callback(std::forward<CB>(cb));
         return await_cont(awt);
     }
 
-    ///initiate await operation
+    ///Full await on awaiter with callback
     /**
-     * @param awt awaiter to await on
-     * @param cb callback with a closure. The closure must occupy less or equal calculated space
-     * @return prepared coro holding result of await_suspend operation
-     *  if a handle is returned. It can return handle to callback if
-     *  the operation is already complete. You should resume the
-     *  prepared_coro in order to finish asynchronous operation
-     *
-     * @note it is allowed to reuse this object to another await operation. You only
-     * need to prevent to initiate await operation while other is still pending
-
+     * @param awt awaiter. See set_awaiter()
+     * @param cb callback. See set_callback()
+     * @return see await()
      */
     template<std::invocable<Awaiter &> CB>
-    requires (sizeof(coro_frame_cb<CallCB<CB> >) <= required_space)
-    prepared_coro await(Awaiter &&awt, CB &&cb) {
-        return await(awt, std::forward<CB>(cb));
+    requires(sizeof(coro_frame_cb<CallCB<CB> >) <= required_space)
+    coro::prepared_coro await(Awaiter &&awt, CB &&cb) {
+        set_callback(std::forward<CB>(cb));
+        return await_cont(awt);
     }
+
+    ///Retrieves awaiter instance
+    /** 
+     * @return reference to internal awaiter instance. You can call additional methods
+     * on the awaiter, such a cancel()
+     * @note The awaiter must be set previously, otherwise UB
+     */
+    Awaiter &get_awaiter() {
+        return _awt;
+    }
+
 
     ///clear a coroutine frame, call destructor on the callback
     /**
@@ -158,7 +225,7 @@ public:
      * this function destroys stored callback function (calls its destructor)
      * You can call this function only if operation is already complete
      */
-    void clear_frame() {
+    void clear_callback() {
         if (_frame_charged) {
             _frame.create_handle().destroy();
             _frame_charged = false;
@@ -185,81 +252,10 @@ public:
      * Functions await and await_cont handles clear automatically
      */
     void clear() {
-        clear_frame();
+        clear_callback();
         clear_awaiter();
     }
 
-    ///prepares await operation by moving awaiter into internal state
-    /** This function can be called before the  frame is initialized.
-     * The frame can be initialized by run_await later
-     *
-     * @param awt awaiter to move in
-     *
-     * @note this function allows to check for non-blocking result. If
-     * result is not ready, it can move awaiter to internal state to
-     * be prepared for execution of asynchronous operation
-     *
-     */
-    void prepare_await(Awaiter &awt) {
-        clear_awaiter();
-        std::construct_at(&_awt,std::move(awt));
-        _awaiter_charged = true;
-    }
-    ///prepares await operation by moving awaiter into internal state
-    /** This function can be called before the  frame is initialized.
-     * The frame can be initialized by run_await later
-     *
-     * @param awt awaiter to move in
-     *
-     * @note this function allows to check for non-blocking result. If
-     * result is not ready, it can move awaiter to internal state to
-     * be prepared for execution of asynchronous operation
-     *
-     */
-    void prepare_await(Awaiter &&awt) {
-        prepare_await(awt);
-    }
-
-    ///await on prepared awaiter
-    prepared_coro await_on_prepared() {
-        if (!_frame_charged) throw std::logic_error("no callback has been defined");
-        if (_awt.await_ready()) {
-            return _frame.create_handle();
-        } else {
-            return call_await_suspend(_awt,_frame.create_handle());
-        }
-    }
-
-    ///await on prepared awaiter, define callback
-    template<std::invocable<Awaiter &> CB>
-    requires (sizeof(coro_frame_cb<CallCB<CB> >) <= required_space)
-    prepared_coro await_on_prepared(CB &&cb) {
-        clear_frame();
-        new(_space) coro_frame_cb<CallCB<CB> >(CallCB<CB>(_awt, std::forward<CB>(cb)));
-        _frame_charged = true;
-        return await_on_prepared();
-    }
-
-    ///retrieves internal awaiter
-    Awaiter *get_awaiter() {
-        if (_awaiter_charged) return &_awt;
-        else return nullptr;
-    }
-
-    class AutoCancelDeleter {
-    public:
-        template<typename X>
-        void operator()(X *p) {
-            auto a = p->get_awaiter();
-            if (a) a->cancel();
-        }
-    };
-
-    ///for awaitable<X> awaiter allows to create an object which
-    /// causes calling of cancel on awaitable if the async lambda function is not executed
-    std::unique_ptr<awaiting_callback, AutoCancelDeleter> get_auto_cancel() {
-        return {this,{}};
-    }
 
 protected:
     union {

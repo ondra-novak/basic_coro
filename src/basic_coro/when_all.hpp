@@ -1,3 +1,4 @@
+#pragma once
 #include "prepared_coro.hpp"
 #include "coro_frame.hpp"
 #include "concepts.hpp"

@@ -534,6 +534,60 @@ public:
      */
     static typename coroutine<T>::detached_test_awaitable is_detached() {return {};}
 
+    ///forward result of this awaiter to existing result object
+    /**
+     * This function causes that result of this awaiter is forwarded to result
+     * object regardless on state of this object. If the
+     * state is pending, then result object is passed to the async lambda
+     * for completion
+     *
+     * @param r result object
+     *
+     * @return prepared coroutine handle. The operation can resume a coroutine
+     * its handle is returned there
+     *
+     * @note after forward operation, current awaiter is in uninicialized state
+     */
+    prepared_coro forward(result &r) {
+        prepared_coro out;
+        if (r) {
+            switch (_state) {
+                case no_value: out = r.set_empty();break;
+                case value: out = r.set_value(std::move(_value));break;
+                case exception: out = r.set_exception(std::move(_exception));break;
+                case coro:out = _coro.start(std::move(r)).symmetric_transfer();break;
+                default: {
+                    auto h = r.get_handle();
+                    h->destroy_state();
+                    h->_vtable = _vtable;
+                    _vtable->move(_callback_space, h->_callback_space);
+                    out = _vtable->call(h->_callback_space,std::move(r));
+                }
+            }
+        }
+        destroy_state();
+        _state = no_value;
+        return out;
+    }
+
+    ///forward result of this awaiter to existing result object
+    /**
+     * This function causes that result of this awaiter is forwarded to result
+     * object regardless on state of this object. If the
+     * state is pending, then result object is passed to the async lambda
+     * for completion
+     *
+     * @param r result object
+     *
+     * @return prepared coroutine handle. The operation can resume a coroutine
+     * its handle is returned there
+     *
+     * @note after forward operation, current awaiter is in uninicialized state
+     *
+     */
+    void forward(result &&r) {
+        forward(r);
+    }
 
 protected:
 

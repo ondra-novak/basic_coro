@@ -17,6 +17,46 @@ template<typename T> class awaitable_result;
 template<typename T> using voidless_type = std::conditional_t<std::is_void_v<T>, void_type, T>;
 
 
+///Implements awaiter proxy, which can be used to convert return value to different return value
+/**
+ * @tparam Awt type of awaiter
+ * @tparam Callback type of callback. It must be callable with awaiter as first argument and return value of awaitable<T> type
+ *
+ * This class is used to convert awaiter to different type. It is used in the following way:
+ *
+ * @code
+ * auto awt = awaitable_function();
+ * awaiter_proxy proxy(awt, [](auto &awt) {
+ *      return awt.await_resume()*42;
+ * });
+ * auto res = co_await proxy;
+ * @endcode 
+ */
+template<is_awaiter Awt, std::invocable<Awt &> Callback>
+class awaiter_proxy {
+public:
+
+    awaiter_proxy(Awt &awt, Callback &&cb):_awaiter(awt), _callback(std::forward<Callback>(cb)) {}
+    awaiter_proxy( awaiter_proxy &&) = default;  
+
+    bool await_ready() const {return _awaiter.await_ready();}
+    auto await_suspend(std::coroutine_handle<> h) {
+        return _awaiter.await_suspend(h);
+    }
+    auto await_resume() {
+        return _callback(_awaiter);
+    }
+
+    decltype(auto) wait() {
+        return sync_await(*this);
+    }
+
+protected:
+    Awt &_awaiter;
+    Callback _callback;
+};
+
+
 template<typename T>
 class awaitable_result {
 public:
@@ -431,15 +471,47 @@ public:
         return await_resume();
     }
 
-    ///allows to await on this awaitable without processing result
+    ///awaitable function which returns true if the result is resolved with a value or exception
     /**
-     * @code
-     * co_await awt.ready();
+     * This is awaitable version on has_value(). It is useful when you need to wait
+     * on the result of the awaitable object, but you don't want to handle exceptions
+     * This function doesn't throw exception, it just returns true, if the result is resolved
+     * with a value or exception. Otherwise it returns false.
+     * 
+     * @code {c++}
+     * bool has_v = co_await obj.ready(); //wait like direct co_await on obj, no exception thrown
+     * if (has_v) {                     //if awaitable has value
+     *    auto v = obj.await_resume();  //retrieve the value manually (exception can be thrown here)
+     *   //do something with the value
+     * } else {
+     *    //no value is available.
+     * }
      * @endcode
-     *
-     * @return awaitable
+     */    
+    auto /*awaitable<bool>*/  ready() {
+        return awaiter_proxy(*this, [](awaitable &awt) {
+            return awt.has_value();
+        });
+    }
+
+    ///awaitable function which returns value as optional
+    /**
+     * @return optional result. It contains no_value, when co_await
+     * operation was canceled.     
      */
-    awaitable<void> ready();
+    auto /*awaitable<std::optional<T> > */ as_optional() {
+        return awaiter_proxy(*this, [](awaitable &awt) {
+            if (awt.has_value()) {
+                if (_state.is_exception()) {
+                    std::rethrow_exception(awt._exception);
+                } else {
+                    return std::optional<T>(std::move(_value));
+                }
+            } else {
+                return std::nullopt;
+            }
+        });
+    }
 
     ///evaluate asynchronous operation, waiting for result synchronously
     void wait();
@@ -691,24 +763,6 @@ protected:
     prepared_coro set_callback_internal(_Callback &&cb, _Allocator &a);
 
 
-
-
-
-    struct ready_frame: coro_frame<ready_frame> {
-        awaitable *src;
-        awaitable_result<void> r = {};
-
-        ready_frame(awaitable *src):src(src) {};
-        prepared_coro operator()(awaitable_result<void> r) {
-            if (!r) return {};
-            this->r = std::move(r);
-            return src->await_suspend(this->create_handle());
-        }
-
-        prepared_coro do_resume();
-    };
-
-
     friend class awaitable_result<T>;
     friend struct details::promise_type_base<T>;
     friend struct details::promise_type_base_generic<T>;
@@ -792,15 +846,9 @@ inline prepared_coro awaitable<T>::set_callback_internal(_Callback &&cb, _Alloca
 }
 
 
-
-template<typename T>
-prepared_coro awaitable<T>::ready_frame::do_resume() {
-    return r();
-}
-
-
-template<typename T>
-inline void awaitable<T>::wait() {
+template <typename T>
+inline void awaitable<T>::wait()
+{
     if (!await_ready()) {
         sync_frame sync;
         await_suspend(sync.create_handle()).resume();

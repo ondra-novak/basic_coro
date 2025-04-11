@@ -500,12 +500,12 @@ public:
      * operation was canceled.     
      */
     auto /*awaitable<std::optional<T> > */ as_optional() {
-        return awaiter_proxy(*this, [](awaitable &awt) {
+        return awaiter_proxy(*this, [](awaitable &awt) ->std::optional<store_type> {
             if (awt.has_value()) {
-                if (_state.is_exception()) {
+                if (awt._state == exception) {
                     std::rethrow_exception(awt._exception);
                 } else {
-                    return std::optional<T>(std::move(_value));
+                    return std::move(awt._value);
                 }
             } else {
                 return std::nullopt;

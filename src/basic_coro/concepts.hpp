@@ -2,9 +2,10 @@
 #include <coroutine>
 #include <type_traits>
 #include <iterator>
+#include <optional>
 
 namespace coro {
-   
+
 template<typename T>
 concept IsAwaitSuspendResult = std::is_void_v<T> || std::is_convertible_v<T, bool> || std::is_convertible_v<T, std::coroutine_handle<> >;
 
@@ -26,7 +27,7 @@ concept has_global_co_await = requires(T a) {
 };
 
 template<typename T>
-concept is_awaitabe = is_awaiter<T> || has_global_co_await<T> || has_co_await<T>;
+concept is_awaitable = is_awaiter<T> || has_global_co_await<T> || has_co_await<T>;
 
 template<typename T>
 concept range_for_iterable = requires(T t) {
@@ -61,9 +62,9 @@ struct awaiter_result_def<T> {
 };
 
 ///Determines type returned by the awaiter
-template<is_awaitabe T>
+template<is_awaitable T>
 using awaiter_result = typename awaiter_result_def<T>::type;
- 
+
 template<typename T>
 struct temporary_awaiter_def;
 
@@ -84,7 +85,7 @@ struct temporary_awaiter_def<T> {
     using type = decltype(operator co_await(std::declval<T>()));
 };
 
-template<is_awaitabe T>
+template<is_awaitable T>
 using temporary_awaiter_type = typename temporary_awaiter_def<T>::type;
 
 
@@ -98,8 +99,10 @@ template<typename _AwaitableResultType, typename ... _ResultArguments>
 concept is_awaitable_valid_result_type = (
     (std::is_void_v<_AwaitableResultType> && sizeof...(_ResultArguments) == 0)
     || std::is_constructible_v<_AwaitableResultType, _ResultArguments...>
-    || (sizeof...(_ResultArguments) == 1 && 
+    || (sizeof...(_ResultArguments) == 1 &&
         (std::is_invocable_r_v<_AwaitableResultType, _ResultArguments> &&...))
+    || (sizeof...(_ResultArguments) == 1 &&
+         (std::is_same_v<std::nullopt_t, std::decay_t<_ResultArguments>> &&...))
 );
 
 }

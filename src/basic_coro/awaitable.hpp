@@ -30,14 +30,14 @@ template<typename T> using voidless_type = std::conditional_t<std::is_void_v<T>,
  *      return awt.await_resume()*42;
  * });
  * auto res = co_await proxy;
- * @endcode 
+ * @endcode
  */
 template<is_awaiter Awt, std::invocable<Awt &> Callback>
 class awaiter_proxy {
 public:
 
     awaiter_proxy(Awt &awt, Callback &&cb):_awaiter(awt), _callback(std::forward<Callback>(cb)) {}
-    awaiter_proxy( awaiter_proxy &&) = default;  
+    awaiter_proxy( awaiter_proxy &&) = default;
 
     bool await_ready() const {return _awaiter.await_ready();}
     auto await_suspend(std::coroutine_handle<> h) {
@@ -477,7 +477,7 @@ public:
      * on the result of the awaitable object, but you don't want to handle exceptions
      * This function doesn't throw exception, it just returns true, if the result is resolved
      * with a value or exception. Otherwise it returns false.
-     * 
+     *
      * @code {c++}
      * bool has_v = co_await obj.ready(); //wait like direct co_await on obj, no exception thrown
      * if (has_v) {                     //if awaitable has value
@@ -487,7 +487,7 @@ public:
      *    //no value is available.
      * }
      * @endcode
-     */    
+     */
     auto /*awaitable<bool>*/  ready() {
         return awaiter_proxy(*this, [](awaitable &awt) {
             return awt.has_value();
@@ -497,7 +497,7 @@ public:
     ///awaitable function which returns value as optional
     /**
      * @return optional result. It contains no_value, when co_await
-     * operation was canceled.     
+     * operation was canceled.
      */
     auto /*awaitable<std::optional<T> > */ as_optional() {
         return awaiter_proxy(*this, [](awaitable &awt) ->std::optional<store_type> {
@@ -734,6 +734,8 @@ protected:
             void *trg = const_cast<std::remove_const_t<store_type> *>(&_value);
             if constexpr (sizeof...(Args) == 1 && (std::is_invocable_r_v<store_type, Args>  && ...)) {
                 new(trg) store_type((...,args()));
+            } else if constexpr (sizeof...(Args) == 1 && (std::is_same_v<std::nullopt_t, std::decay_t<Args> > &&...)) {
+                _state = no_value;
             } else {
                 new(trg) store_type(std::forward<Args>(args)...);
             }

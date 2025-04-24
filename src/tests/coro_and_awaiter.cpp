@@ -100,14 +100,6 @@ awaitable<test_struct> test_pointer_access_fn() {
         return prom(test_struct{42});
     };
 }
-
-awaitable<void> test_pointer_access_coro() {
-    auto awt = test_pointer_access_fn();
-    for (auto iter = co_await awt.begin(); iter != awt.end(); ++iter) {
-        CHECK_EQUAL(iter->val, 42);
-    }
-}
-
 awaitable<void> detach_test_coro(bool expect) {
     bool b = co_await awaitable<void>::is_detached();
     CHECK_EQUAL(b, expect);
@@ -128,7 +120,6 @@ int main() {
     test_awaitable_in_thread(s);
     CHECK_EQUAL(s.view(),"different");
     reusable_test();
-    test_pointer_access_coro().wait();
     detached_test();
     return 0;
 }

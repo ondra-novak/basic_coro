@@ -169,7 +169,7 @@ protected:
      */
     prepared_coro resumed(Slot *nd) {
         //calculate index
-        unsigned int idx = nd - _slots;
+        unsigned int idx = static_cast<unsigned int>(nd - _slots);
         //calculate value
         unsigned int v = idx + 2;
         //retrieve next result slot

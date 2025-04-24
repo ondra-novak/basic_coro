@@ -211,7 +211,7 @@ public:
 
         ///comparison only returns true, if both iterators points to end
         bool operator==(const iterator &other) const {
-            return !_awt && !other._awt;
+            return !_awt.has_value() && !other._awt.has_value();
         }
         ///returns current value
         reference operator *() const {

@@ -30,7 +30,7 @@ void queue_push_test() {
 coroutine<void> pop_coro(coro::queue<char> &q, std::string expect) {
     std::string out;
     auto r = q.pop();
-    while (co_await r.has_value()) {
+    while (co_await r.ready()) {
         out.push_back(r);
         r = q.pop();
     }

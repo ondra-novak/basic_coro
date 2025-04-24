@@ -49,7 +49,7 @@ public:
 
     decltype(auto) wait() {
         return sync_await(*this);
-    }
+    }    
 
 protected:
     Awt &_awaiter;
@@ -355,6 +355,8 @@ public:
         return _state == value || _state == exception;
     }
 
+    explicit operator bool() const {return has_value();}
+
     ///returns whether there is an exception in the object
     /**
      * The object must be in resolved state. Use co_await ready() if not
@@ -561,29 +563,6 @@ public:
         return result(this);
     }
 
-    ///cancel futher execution
-    /** This prevents to execute prepared asynchronous operation. You need
-     * to invoke this function if you requested only non-blocking part of
-     * operation and don't want to contine asynchronously
-     *
-     * If the state is not pending, function does nothing
-     */
-    void cancel() {
-        if (_owner) throw invalid_state();
-        switch (_state) {
-            case no_value:
-            case value:
-            case exception: return;
-            case coro:
-                _coro.cancel();
-                std::destroy_at(&_coro);
-                break;
-            default:
-                _vtable->destroy(_callback_space);
-                break;
-        }
-        _state = no_value;
-    }
 
     ///determines whether coroutine is running in detached mode
     /**
@@ -702,16 +681,7 @@ protected:
 
     void dtor() {
         if (is_awaiting()) throw invalid_state();
-        switch (_state) {
-            case no_value:break;
-            case value: std::destroy_at(&_value);break;
-            case exception: std::destroy_at(&_exception);break;
-            case coro: std::destroy_at(&_coro);break;
-            default:
-                _vtable->call(_callback_space, result(this));
-                _vtable->destroy(_callback_space);
-                break;
-        }
+        destroy_state();
     }
 
     void destroy_state() {
@@ -785,64 +755,22 @@ inline prepared_coro awaitable_result<T>::set_value(Args &&...args)
     return {};
 }
 
-namespace details {
-
-template<typename T, std::invocable<awaitable<T> &> _CB, coro_allocator _Allocator >
-class awaiting_callback : public coro_frame<awaiting_callback<T, _CB, _Allocator> >
-                        , public _Allocator::overrides
-{
-public:
-
-    static prepared_coro init(awaitable<T> &&awt, _CB &&cb, _Allocator &alloc) {
-        awaiting_callback *n = new(alloc) awaiting_callback(std::move(awt), std::forward<_CB>(cb));
-        return n->run();
-    }
-protected:
-    ///constructor is not visible on the API
-    awaiting_callback(awaitable<T> &&awt, _CB &&cb):_cb(std::forward<_CB>(cb)),_awt(std::move(awt)) {}
-
-    prepared_coro run() {
-        if (_awt.await_ready()) {
-            do_resume();
-            return {};
-        } else {
-            return call_await_suspend(_awt, this->create_handle());
-        }
-    }
-
-    _CB _cb;
-    ///awaitable object associated with the function
-    awaitable<T> _awt = {nullptr};
-
-    ///called when resume is triggered
-    void do_resume() {
-        try {
-            _cb(_awt);
-        } catch (...) {
-            async_unhandled_exception();
-        }
-        do_destroy();
-    }
-    void do_destroy() {
-        delete this;
-    }
-
-    friend coro_frame<awaiting_callback<T, _CB, _Allocator> >;
-};
-
-}
 
 template <typename T>
 template <typename _Callback, typename _Allocator>
 inline prepared_coro awaitable<T>::set_callback_internal(_Callback &&cb, _Allocator &a)
 {
+    auto cb_coro = [](_Allocator &a, _Callback cb, awaitable awt) -> coroutine<void> {
+        co_await awt.ready();
+        cb(awt);    
+    };
+
     prepared_coro out = {};
 
     if (await_ready()) {
         cb(*this);
     } else {
-        out = details::awaiting_callback<T, _Callback, _Allocator>::init(std::move(*this), std::forward<_Callback>(cb), a);
-        cancel();
+        out = cb_coro(a, std::forward<_Callback>(cb), std::move(*this)).start({});
     }
     return out;
 }

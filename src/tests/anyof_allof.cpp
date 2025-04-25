@@ -63,9 +63,9 @@ awaitable<void> coro_test_master_all_off() {
 
 int main() {
     std::ostringstream buff;
-    coro_test_master(buff).await();
+    coro_test_master(buff).wait();
     if (buff.view() != "6|2|4|5|1|3|") return 1;
     buff.str({});
-    coro_test_master_all_off().await();
+    coro_test_master_all_off().wait();
     return 0;
 }

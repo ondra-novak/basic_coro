@@ -15,14 +15,14 @@ void test1() {
     CHECK(!l3.is_ready());
     std::vector<int> res;
     l2 >> [&](awaitable<mutex::ownership> &r){
-        mutex::ownership own = r;
+        mutex::ownership own = *std::move(r);
         res.push_back(2);
     };
     l3 >> [&](awaitable<mutex::ownership> &r){
-        mutex::ownership own = r;
+        mutex::ownership own = *std::move(r);
         res.push_back(3);
     };
-    mutex::ownership own = l1;
+    mutex::ownership own = l1.get();
     res.push_back(1);
     own.release();
     CHECK_EQUAL(res.size(),3);

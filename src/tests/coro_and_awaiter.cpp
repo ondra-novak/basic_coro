@@ -52,7 +52,7 @@ void test1(std::ostream &out) {
     prom=42;
 
     callback_by_member bar;
-    int x = awaitable<int>(&bar, &callback_by_member::foo);
+    int x = awaitable<int>(&bar, &callback_by_member::foo).get();
     out << x << '/';
 }
 
@@ -73,7 +73,7 @@ void test_awaitable_in_thread(std::ostream &out) {
     std::ostringstream buff;
     buff << std::this_thread::get_id();
     auto t1 = buff.str();
-    auto t2 = switch_thread().await();
+    auto t2 = switch_thread().get();
     if (t1 == t2) out << "same";
     else out << "different";
 }
@@ -100,13 +100,13 @@ awaitable<test_struct> test_pointer_access_fn() {
         return prom(test_struct{42});
     };
 }
-awaitable<void> detach_test_coro(bool expect) {
-    bool b = co_await awaitable<void>::is_detached();
+coroutine<void> detach_test_coro(bool expect) {
+    bool b = co_await coroutine<void>::is_detached();
     CHECK_EQUAL(b, expect);
 }
 
 void detached_test() {
-    detach_test_coro(false).wait();
+    detach_test_coro(false).get();
     detach_test_coro(true);
 }
 

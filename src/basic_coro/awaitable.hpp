@@ -47,9 +47,22 @@ public:
         return _callback(_awaiter);
     }
 
-    decltype(auto) wait() {
+    ///synchronous get value
+    decltype(auto) get() {
         return sync_await(*this);
-    }    
+    } 
+    ///synchronous get value();   
+    decltype(auto) operator *() {
+        return get();
+    }
+    ///wait but don't get value;
+    void wait() {
+        if (await_ready()) {
+            sync_frame fr;
+            await_suspend(fr.create_handle()).resume();
+            fr.wait();
+        }
+    }
 
 protected:
     Awt &_awaiter;
@@ -264,7 +277,7 @@ public:
 
 
     ///construct with no value
-    awaitable(std::nullopt_t):_state(no_value) {};
+    awaitable(std::nullopt_t):_state(State::no_value) {};
     ///destructor
     /**
      * @note if there is prepared asynchronous operation, it is started
@@ -281,17 +294,17 @@ public:
                 && (!std::is_base_of_v<coroutine_tag, Args> && ...)
             )))
     awaitable(Args &&... args)
-        :_state(value),_value(std::forward<Args>(args)...) {}
+        :_state(State::value),_value(std::forward<Args>(args)...) {}
 
     ///construct by coroutine awaitable for its completion
     template<coro_allocator _Alloc>
-    awaitable(coroutine<T, _Alloc> coroutine):_state(coro),_coro(std::move(coroutine)) {}
+    awaitable(coroutine<T, _Alloc> coroutine):_state(State::coro),_coro(std::move(coroutine)) {}
 
     ///construct containing result constructed by arguments
     template<typename ... Args>
     requires (std::is_constructible_v<store_type, Args...>)
     awaitable(std::in_place_t, Args &&... args)
-        :_state(value),_value(std::forward<Args>(args)...) {}
+        :_state(State::value),_value(std::forward<Args>(args)...) {}
 
     ///construct unresolved containing function which is after suspension of the awaiting coroutine
     template<std::invocable<result> Fn>
@@ -307,7 +320,7 @@ public:
     }
 
     ///construct containing result - in exception state
-    awaitable(std::exception_ptr e):_state(exception),_exception(std::move(e)) {}
+    awaitable(std::exception_ptr e):_state(State::exception),_exception(std::move(e)) {}
 
     ///construct unresolved containing member function which is after suspension of the awaiting coroutine
     /**
@@ -325,16 +338,16 @@ public:
     ///awaitable can be moved
     awaitable(awaitable &&other) {
         switch (other._state) {
-            case no_value:_state = no_value; break;
-            case value: std::construct_at(&_value, std::move(other._value));_state = value;break;
-            case exception: std::construct_at(&_exception, std::move(other._exception));_state = exception;break;
-            case coro: std::construct_at(&_coro, std::move(other._coro));_state = coro;break;
+            case State::no_value:_state = State::no_value; break;
+            case State::value: std::construct_at(&_value, std::move(other._value));_state = State::value;break;
+            case State::exception: std::construct_at(&_exception, std::move(other._exception));_state = State::exception;break;
+            case State::coro: std::construct_at(&_coro, std::move(other._coro));_state = State::coro;break;
             default:
                 _vtable = other._vtable;
                 _vtable->move(other._callback_space, _callback_space);
         }
         other.destroy_state();
-        other._state = no_value;
+        other._state = State::no_value;
     }
 
     ///awaitable can be assigned by move
@@ -352,7 +365,7 @@ public:
      * The object must be in resolved state. Use co_await ready() if not
      */
     bool has_value() const {
-        return _state == value || _state == exception;
+        return _state == State::value || _state == State::exception;
     }
 
     explicit operator bool() const {return has_value();}
@@ -362,7 +375,7 @@ public:
      * The object must be in resolved state. Use co_await ready() if not
      */
     bool has_exception() const {
-        return _state == exception;
+        return _state == State::exception;
     }
 
 
@@ -374,24 +387,12 @@ public:
 
     ///returns value of resolved awaitable
     std::add_rvalue_reference_t<T> await_resume() {
-        if (_state == value) {
-            if constexpr(std::is_void_v<T>) {
-                return;
-            } else if constexpr(std::is_reference_v<T>) {
-                return _value.get();
-            } else {
-                return std::move(_value);
-            }
-        } else if (_state == exception) {
-            std::rethrow_exception(_exception);
-        }
-        throw await_canceled_exception();
+        return std::move(*this).value();
     }
-
 
     ///return true, if the awaitable is resolved
     bool await_ready() const noexcept {
-        return _state == no_value || _state == value || _state == exception;
+        return _state == State::no_value || _state == State::value || _state == State::exception;
     }
 
     ///handles suspension
@@ -402,10 +403,10 @@ public:
     std::coroutine_handle<> await_suspend(std::coroutine_handle<> h) {
         _owner = h;
         switch (_state) {
-            case no_value:
-            case value:
-            case exception: return h;
-            case coro: return _coro.start(result(this)).symmetric_transfer();
+            case State::no_value:
+            case State::value:
+            case State::exception: return h;
+            case State::coro: return _coro.start(result(this)).symmetric_transfer();
             default:
                 return _vtable->call(_callback_space, result(this)).symmetric_transfer();
         }
@@ -459,19 +460,68 @@ public:
     prepared_coro set_callback (_Callback &&cb, _Allocator &a) {
         return set_callback_internal(std::forward<_Callback>(cb), a);
     }
-
-
-    ///synchronous await
-    decltype(auto) await() {
-        wait();
-        return await_resume();
+        
+    ///Retrieve value of the awaitable
+    /** The value must be ready (is_ready() == true).
+     * @return value stored in the object, returned as rvalue reference
+     * @note if the value is not awailable, throws exeception
+     */
+    std::add_rvalue_reference_t<T> value() && { 
+        switch (_state) {
+            default: throw await_canceled_exception();
+            case State::exception: std::rethrow_exception(_exception); 
+            case State::value: if constexpr(std::is_void_v<T>) {return;} else {return std::forward<T>(_value);}
+        }
     }
 
-    ///synchronous await
-    operator voidless_type<T> &&() {
-        wait();
-        return await_resume();
+    /** The value must be ready (is_ready() == true).
+     * @return value stored in the object, returned as lvalue reference
+     * @note if the value is not awailable, throws exeception
+     */
+    std::add_lvalue_reference_t<T> value() & { 
+        switch (_state) {
+            default: throw await_canceled_exception();
+            case State::exception: std::rethrow_exception(_exception); 
+            case State::value: if constexpr(std::is_void_v<T>) {return;} else {return _value;}
+        }
     }
+
+    /** The value must be ready (is_ready() == true).
+     * @return value stored in the object, returned as const lvalue reference
+     * @note if the value is not awailable, throws exeception
+     */
+    std::add_lvalue_reference_t<std::add_const_t<T> > value() const & { 
+        switch (_state) {
+            default: throw await_canceled_exception();
+            case State::exception: std::rethrow_exception(_exception); 
+            case State::value: if constexpr(std::is_void_v<T>) {return;} else {return _value;}
+        }
+    }
+    /** The value must be ready (is_ready() == true).
+     * @return value stored in the object, returned as const rvalue reference
+     * @note if the value is not awailable, throws exeception
+     */
+    std::add_lvalue_reference_t<std::add_const_t<T> > value() const && { 
+        return value();
+    }
+
+    ///access using operator * - @see value();
+    std::add_rvalue_reference_t<T> operator *() && {return std::move(*this).value();}
+    ///access using operator * - @see value();
+    std::add_lvalue_reference_t<T> operator *() & {return this->value();}
+    ///access using operator * - @see value();
+    std::add_lvalue_reference_t<std::add_const_t<T> > operator *() const && {return this->value();}
+    ///access using operator * - @see value();
+    std::add_lvalue_reference_t<std::add_const_t<T> > operator *() const & {return this->value();}
+    
+    ///synchronous await    
+    /**
+     * Function performs synchronous wait. When value is ready, returns it as rvalue reference
+     * 
+     * @note the function always return rvalue reference
+     */
+    std::add_rvalue_reference_t<T> get() {wait(); return std::move(*this).value();}
+
 
     ///awaitable function which returns true if the result is resolved with a value or exception
     /**
@@ -504,7 +554,7 @@ public:
     auto /*awaitable<std::optional<T> > */ as_optional() {
         return awaiter_proxy(*this, [](awaitable &awt) ->std::optional<store_type> {
             if (awt.has_value()) {
-                if (awt._state == exception) {
+                if (awt._state == State::exception) {
                     std::rethrow_exception(awt._exception);
                 } else {
                     return std::move(awt._value);
@@ -526,13 +576,17 @@ public:
      * returned
      *
      * @return evaluated awaitable
+     * 
+     * @note because the object itself cannot be copied by copy constructor, this
+     * function can be used to make a copy. However you cannot copy value
+     * if the value is not resolved yet
      */
     awaitable copy_value() const  {
         switch (_state) {
             default:
-            case no_value: return std::nullopt;
-            case value:return awaitable(std::in_place, _value);
-            case exception:return awaitable(_exception);
+            case State::no_value: return std::nullopt;
+            case State::value:return awaitable(std::in_place, _value);
+            case State::exception:return awaitable(_exception);
 
         }
 
@@ -564,27 +618,6 @@ public:
     }
 
 
-    ///determines whether coroutine is running in detached mode
-    /**
-     * This can optimize processing when coroutine knows, that no result
-     * is requested, so it can skip certain parts of its code. It still
-     * needs to generate result, but it can return inaccurate result or
-     * complete invalid result
-     *
-     * to use this function, you need call it inside of coroutine body
-     * with co_await
-     *
-     * @code
-     * awaitable<int> foo() {
-     *      bool detached = co_await awaitable<int>::is_detached();
-     *      std::cout << detached?"detached":"not detached" << std::endl;
-     *      co_return 42;
-     * }
-     *
-     * @return awaitable which returns true - detached, false - not detached
-     */
-    static typename coroutine<T>::detached_test_awaitable is_detached() {return {};}
-
     ///forward result of this awaiter to existing result object
     /**
      * This function causes that result of this awaiter is forwarded to result
@@ -603,10 +636,10 @@ public:
         prepared_coro out;
         if (r) {
             switch (_state) {
-                case no_value: out = r.set_empty();break;
-                case value: out = r.set_value(std::move(_value));break;
-                case exception: out = r.set_exception(std::move(_exception));break;
-                case coro:out = _coro.start(std::move(r)).symmetric_transfer();break;
+                case State::no_value: out = r.set_empty();break;
+                case State::value: out = r.set_value(std::move(_value));break;
+                case State::exception: out = r.set_exception(std::move(_exception));break;
+                case State::coro:out = _coro.start(std::move(r)).symmetric_transfer();break;
                 default: {
                     auto h = r.get_handle();
                     h->destroy_state();
@@ -617,7 +650,7 @@ public:
             }
         }
         destroy_state();
-        _state = no_value;
+        _state = State::no_value;
         return out;
     }
 
@@ -642,7 +675,7 @@ public:
 
 protected:
 
-    enum State : std::uintptr_t {
+    enum class State : std::uintptr_t {
         ///awaitable is resolved with no value
         no_value = 0,
         ///awaitable is resolved with a value
@@ -686,10 +719,10 @@ protected:
 
     void destroy_state() {
         switch (_state) {
-            case no_value:break;
-            case value: std::destroy_at(&_value);break;
-            case exception: std::destroy_at(&_exception);break;
-            case coro: _coro.cancel();std::destroy_at(&_coro);break;
+            case State::no_value:break;
+            case State::value: std::destroy_at(&_value);break;
+            case State::exception: std::destroy_at(&_exception);break;
+            case State::coro: _coro.cancel();std::destroy_at(&_coro);break;
             default:
                _vtable->destroy(_callback_space);break;
         }
@@ -700,30 +733,30 @@ protected:
     void set_value(Args && ... args) {
         destroy_state();
         try {
-            _state = value;
+            _state = State::value;
             void *trg = const_cast<std::remove_const_t<store_type> *>(&_value);
             if constexpr (sizeof...(Args) == 1 && (std::is_invocable_r_v<store_type, Args>  && ...)) {
                 new(trg) store_type((...,args()));
             } else if constexpr (sizeof...(Args) == 1 && (std::is_same_v<std::nullopt_t, std::decay_t<Args> > &&...)) {
-                _state = no_value;
+                _state = State::no_value;
             } else {
                 new(trg) store_type(std::forward<Args>(args)...);
             }
         } catch (...) {
-            _state = exception;
+            _state = State::exception;
             std::construct_at(&_exception, std::current_exception());
         }
     }
 
     void set_exception(std::exception_ptr e) {
         destroy_state();
-        _state = exception;
+        _state = State::exception;
         std::construct_at(&_exception, std::move(e));
     }
 
     void drop() {
         destroy_state();
-        _state = no_value;
+        _state = State::no_value;
     }
 
     prepared_coro wakeup() {

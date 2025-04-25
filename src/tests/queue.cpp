@@ -31,7 +31,7 @@ coroutine<void> pop_coro(coro::queue<char> &q, std::string expect) {
     std::string out;
     auto r = q.pop();
     while (co_await r.ready()) {
-        out.push_back(r);
+        out.push_back(co_await r);
         r = q.pop();
     }
     CHECK_EQUAL(out, expect);

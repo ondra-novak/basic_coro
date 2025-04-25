@@ -184,13 +184,13 @@ public:
     }
 
     ///await synchronously on result
-    T await() {
+    T get() {
         return sync_await(operator co_await());
     }
 
     ///retrieve result synchronously (conversion to result)
     operator decltype(auto)() {
-        return await();
+        return get();
     }
 
     ///destroy initialized coroutine

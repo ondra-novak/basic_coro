@@ -276,7 +276,7 @@ protected:
                 me->_pop_queue.push(this);
                 return {};
             } else {
-                return r(me->pop2(resm).await());
+                return r(me->pop2(resm).get());
             }
         }
     };

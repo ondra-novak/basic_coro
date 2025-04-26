@@ -793,7 +793,7 @@ template <typename T>
 template <typename _Callback, typename _Allocator>
 inline prepared_coro awaitable<T>::set_callback_internal(_Callback &&cb, _Allocator &a)
 {
-    auto cb_coro = [](_Allocator &a, _Callback cb, awaitable awt) -> coroutine<void> {
+    auto cb_coro = [](_Allocator &, _Callback cb, awaitable awt) -> coroutine<void> {
         co_await awt.ready();
         cb(awt);    
     };

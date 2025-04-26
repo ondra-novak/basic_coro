@@ -67,21 +67,21 @@ public:
     ///move constructor moves the stored awaiter, but it cannot move callback
     /**
      * moves just stored awaiter. The callback itself is left unmoved and it is eventually destroyed
-     * in original object.  
+     * in original object.
      */
     awaiting_callback(awaiting_callback &&other):_frame_charged(false), _awaiter_charged(other._awaiter_charged) {
         if (_awaiter_charged) {
             std::construct_at(&_awt, std::move(other._awt));
             other.clear_awaiter();
         }
-    } 
+    }
 
     ///Sets awaiter
     /**
-     * @param awt an awaiter instance ready to be initiated for await_suspend. The awaiter must 
-     * be movable. 
-     * 
-     * @note any previously set awaiter is destroyed 
+     * @param awt an awaiter instance ready to be initiated for await_suspend. The awaiter must
+     * be movable.
+     *
+     * @note any previously set awaiter is destroyed
      */
     void set_awaiter(Awaiter &awt) {
         clear_awaiter();
@@ -91,10 +91,10 @@ public:
 
     ///Sets awaiter
     /**
-     * @param awt an awaiter instance ready to be initiated for await_suspend. The awaiter must 
-     * be movable. 
-     * 
-     * @note any previously set awaiter is destroyed 
+     * @param awt an awaiter instance ready to be initiated for await_suspend. The awaiter must
+     * be movable.
+     *
+     * @note any previously set awaiter is destroyed
      */
     void set_awaiter(Awaiter &&awt) {
         set_awaiter(awt);
@@ -119,7 +119,7 @@ public:
      * @param cb callback instance, its closure must be small enough to fit into
      * reserved space in the object (specified by template Args )
      * @note callback must be movable
-     * 
+     *
      */
     template<std::invocable<Awaiter &> CB>
     requires(sizeof(coro_frame_cb<CallCB<CB> >) <= required_space)
@@ -135,16 +135,16 @@ public:
      * awaiter is marked ready, it immediately initiates the callack. If the
      * awaiter is not ready, await_suspend is called with internal handle, which
      * causes that callback will be called once the operation is complete
-     * 
+     *
      * @return returns prepared coroutine handle. This could be internal handle
      * if awaiter has been marked ready, or any result returned from await_suspend.
      * Return value can be empty.
-     * 
+     *
      * @note in case of awaiter is marked ready, the callback is not executed now. It
      * is returned as internal handle from the function. You need to resume the
      * handle to finish completion. The optimal way is to move return value outside
      * any held lock and resume it there
-     * 
+     *
      */
     coro::prepared_coro await() {
         if (!_frame_charged) throw std::logic_error("Callback was not set");
@@ -157,8 +157,8 @@ public:
     }
 
     /// await in set awaiter with specified callback
-    /** 
-     * Just combines set_callback() and await(). 
+    /**
+     * Just combines set_callback() and await().
      * @return see await()
      */
     template<std::invocable<Awaiter &> CB>
@@ -169,8 +169,8 @@ public:
     }
 
     ///Continue in await operation with different awaiter
-    /** 
-     * This can be used to repeat asynchronous operation if previous 
+    /**
+     * This can be used to repeat asynchronous operation if previous
      * operation was not fully completed
      * @param awt compatible awaiter, see set_awaiter()
      * @return see await()
@@ -181,7 +181,7 @@ public:
         return await();
     }
 
-   
+
     ///Full await on awaiter with callback
     /**
      * @param awt awaiter. See set_awaiter()
@@ -209,7 +209,7 @@ public:
     }
 
     ///Retrieves awaiter instance
-    /** 
+    /**
      * @return reference to internal awaiter instance. You can call additional methods
      * on the awaiter, such a cancel()
      * @note The awaiter must be set previously, otherwise UB
@@ -254,6 +254,33 @@ public:
     void clear() {
         clear_callback();
         clear_awaiter();
+    }
+
+    struct awaiter_guard_deleter {
+        void operator()(awaiting_callback *me){
+            me->clear_awaiter();
+        }
+    };
+
+    using awaiter_guard = std::unique_ptr<awaiting_callback, awaiter_guard_deleter>;
+
+    ///Sets awaiter and returns guard
+    /**
+     * @param awt awaiter
+     * @return a guard object which automatically clears awaiter when guard left the scope
+     */
+    awaiter_guard set_awaiter_guard(Awaiter &awt) {
+        set_awaiter(awt);
+        return awaiter_guard(this);
+    }
+
+    ///Sets awaiter and returns guard
+    /**
+     * @param awt awaiter
+     * @return a guard object which automatically clears awaiter when guard left the scope
+     */
+    awaiter_guard set_awaiter_guard(Awaiter &&awt) {
+        set_awaiter_guard(awt);
     }
 
 

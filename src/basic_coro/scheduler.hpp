@@ -52,7 +52,7 @@ public:
             if (_heap[i].ident == ident) {
                 r = std::move(_heap[i].res);
                 if (i == 0) {
-                    remove_first();
+                    r = remove_first();
                 } else if (i == cnt-1) {
                     _heap.pop_back();
                 } else {

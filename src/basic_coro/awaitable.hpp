@@ -8,13 +8,8 @@
 
 namespace coro {
 
-///replaces simple void everywhere valid type is required
-struct void_type {};
-
-
 template<typename T> class awaitable;
 template<typename T> class awaitable_result;
-template<typename T> using voidless_type = std::conditional_t<std::is_void_v<T>, void_type, T>;
 
 
 ///Implements awaiter proxy, which can be used to convert return value to different return value
@@ -50,8 +45,8 @@ public:
     ///synchronous get value
     decltype(auto) get() {
         return sync_await(*this);
-    } 
-    ///synchronous get value();   
+    }
+    ///synchronous get value();
     decltype(auto) operator *() {
         return get();
     }
@@ -71,7 +66,7 @@ protected:
 
 
 template<typename T>
-class awaitable_result {
+class [[nodiscard]] awaitable_result {
 public:
 
     ///construct uninitialized
@@ -460,16 +455,16 @@ public:
     prepared_coro set_callback (_Callback &&cb, _Allocator &a) {
         return set_callback_internal(std::forward<_Callback>(cb), a);
     }
-        
+
     ///Retrieve value of the awaitable
     /** The value must be ready (is_ready() == true).
      * @return value stored in the object, returned as rvalue reference
      * @note if the value is not awailable, throws exeception
      */
-    std::add_rvalue_reference_t<T> value() && { 
+    std::add_rvalue_reference_t<T> value() && {
         switch (_state) {
             default: throw await_canceled_exception();
-            case State::exception: std::rethrow_exception(_exception); 
+            case State::exception: std::rethrow_exception(_exception);
             case State::value: if constexpr(std::is_void_v<T>) {return;} else {return std::forward<T>(_value);}
         }
     }
@@ -478,10 +473,10 @@ public:
      * @return value stored in the object, returned as lvalue reference
      * @note if the value is not awailable, throws exeception
      */
-    std::add_lvalue_reference_t<T> value() & { 
+    std::add_lvalue_reference_t<T> value() & {
         switch (_state) {
             default: throw await_canceled_exception();
-            case State::exception: std::rethrow_exception(_exception); 
+            case State::exception: std::rethrow_exception(_exception);
             case State::value: if constexpr(std::is_void_v<T>) {return;} else {return _value;}
         }
     }
@@ -490,10 +485,10 @@ public:
      * @return value stored in the object, returned as const lvalue reference
      * @note if the value is not awailable, throws exeception
      */
-    std::add_lvalue_reference_t<std::add_const_t<T> > value() const & { 
+    std::add_lvalue_reference_t<std::add_const_t<T> > value() const & {
         switch (_state) {
             default: throw await_canceled_exception();
-            case State::exception: std::rethrow_exception(_exception); 
+            case State::exception: std::rethrow_exception(_exception);
             case State::value: if constexpr(std::is_void_v<T>) {return;} else {return _value;}
         }
     }
@@ -501,7 +496,7 @@ public:
      * @return value stored in the object, returned as const rvalue reference
      * @note if the value is not awailable, throws exeception
      */
-    std::add_lvalue_reference_t<std::add_const_t<T> > value() const && { 
+    std::add_lvalue_reference_t<std::add_const_t<T> > value() const && {
         return value();
     }
 
@@ -513,11 +508,11 @@ public:
     std::add_lvalue_reference_t<std::add_const_t<T> > operator *() const && {return this->value();}
     ///access using operator * - @see value();
     std::add_lvalue_reference_t<std::add_const_t<T> > operator *() const & {return this->value();}
-    
-    ///synchronous await    
+
+    ///synchronous await
     /**
      * Function performs synchronous wait. When value is ready, returns it as rvalue reference
-     * 
+     *
      * @note the function always return rvalue reference
      */
     std::add_rvalue_reference_t<T> get() {wait(); return std::move(*this).value();}
@@ -576,7 +571,7 @@ public:
      * returned
      *
      * @return evaluated awaitable
-     * 
+     *
      * @note because the object itself cannot be copied by copy constructor, this
      * function can be used to make a copy. However you cannot copy value
      * if the value is not resolved yet
@@ -795,7 +790,7 @@ inline prepared_coro awaitable<T>::set_callback_internal(_Callback &&cb, _Alloca
 {
     auto cb_coro = [](_Allocator &, _Callback cb, awaitable awt) -> coroutine<void> {
         co_await awt.ready();
-        cb(awt);    
+        cb(awt);
     };
 
     prepared_coro out = {};

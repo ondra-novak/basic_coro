@@ -39,7 +39,7 @@ namespace details {
 
     template<typename T>
     struct promise_type_base : promise_type_base_generic<T> {
-        
+
        void set_exception(std::exception_ptr e) {
             if (this->_target) this->_target->set_exception(std::move(e));
         }
@@ -78,7 +78,7 @@ struct coroutine_tag {};
  * case, the awaiting coroutine receives exception canceled_exception
  */
 template<typename T, coro_allocator _Allocator = objstdalloc>
-class coroutine; 
+class coroutine;
 template<typename T>
 class coroutine<T, objstdalloc>: public coroutine_tag {
 public:
@@ -179,18 +179,24 @@ public:
         return {};
     }
 
+    ///by using co_await, the coroutine is converted to awaitable<T> and eventually started
     awaitable<T> operator co_await() {
         return std::move(*this);
+    }
+
+    ///you can fetch value from coroutine directly, this is blocking operation
+    operator voidless_type<T>() {
+        if constexpr(std::is_void_v<T>) {
+            get();
+            return {};
+        } else {
+            return get();
+        }
     }
 
     ///await synchronously on result
     T get() {
         return sync_await(operator co_await());
-    }
-
-    ///retrieve result synchronously (conversion to result)
-    operator decltype(auto)() {
-        return get();
     }
 
     ///destroy initialized coroutine

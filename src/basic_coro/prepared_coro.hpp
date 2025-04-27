@@ -216,13 +216,19 @@ prepared_coros(prepared_coro (&)[N]) -> prepared_coros<N>;
 template<std::size_t M1, std::size_t M2>
 prepared_coros(prepared_coros<M1> &&, prepared_coros<M2> &&) -> prepared_coros<M1+M2>;
 
+
+///converts multiple prepared_coro object into single prepared_coro object
+/**
+ * This function is implemented as a coroutine.
+ * @param list of prepared coros
+ * @return aggregated prepared coro
+ */
 template<std::same_as<prepared_coro> ... Args>
 prepared_coro aggregate_prepared_coros(Args ...  ) noexcept {
+    //the function contains only co_return. All arguments are destroyed at the end of
+    //the coroutine, which causes resumption
     co_return;
 }
 
-inline void test() {
-    aggregate_prepared_coros(prepared_coro{});
-}
 
 }

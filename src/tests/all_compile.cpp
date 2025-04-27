@@ -10,6 +10,7 @@ template class coro::multi_lock<10>;
 template class coro::awaitable<const int &>;
 template class coro::awaitable<int &>;
 template class coro::distributor<const int>;
+template class coro::pmr_allocator<>;
 
 template class coro::awaiting_callback<coro::awaitable<int>, int, float, std::string>;
 

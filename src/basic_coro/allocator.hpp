@@ -32,6 +32,25 @@ public:
 
 static_assert(coro_allocator<objstdalloc>);
 
+///Search arguments and find first
+template<typename T, typename Arg0, typename ... Args>
+std::add_pointer_t<std::remove_reference_t<T> > get_first_arg_of_type(Arg0 && arg0, Args && ...  args) {
+    if constexpr(std::is_same_v<std::decay_t<Arg0>, std::decay_t<T> >) {
+        return &arg0;
+    } else if constexpr (sizeof...(Args) == 0) {
+        return nullptr;
+    } else {
+        return get_first_arg_of_type<T>(std::forward<Args>(args)...);
+    }
+}
+
+inline void *ptr_plus_bytes(void *ptr, std::ptrdiff_t offset) {
+    return reinterpret_cast<char *>(ptr)+offset;
+}
+inline const void *ptr_plus_bytes(const void *ptr, std::ptrdiff_t offset) {
+    return reinterpret_cast<const char *>(ptr)+offset;
+}
+
 
 ///holds a memory which can be reused for coroutine frame
 /**
@@ -70,22 +89,13 @@ public:
         template<typename ... Args>
         requires((std::is_same_v<reusable_allocator &, Args> ||...))
         void *operator new(std::size_t sz, Args && ... args) {
-
-            reusable_allocator *me;
-            auto finder = [&](auto &&k) {
-                if constexpr(std::is_same_v<decltype(k),reusable_allocator &>) me = &k;
-            };
-            (finder(args),...);
-            if (me) {
-                if (me->_buffer_size < sz) {
-                    ::operator delete(me->_buffer);
-                    me->_buffer = ::operator new(sz);
-                    me->_buffer_size = sz;
-                }
-                return me->_buffer;
-            } else {
-                throw invalid_state();
+            auto me = get_first_arg_of_type<reusable_allocator &>(std::forward<Args>(args)...);
+            if (me->_buffer_size < sz) {
+                ::operator delete(me->_buffer);
+                me->_buffer = ::operator new(sz);
+                me->_buffer_size = sz;
             }
+            return me->_buffer;
         }
 
         void operator delete (void *, std::size_t) {}
@@ -95,6 +105,7 @@ protected:
     void *_buffer = {};
     std::size_t _buffer_size = 0;
 };
+
 
 static_assert(coro_allocator<reusable_allocator>);
 

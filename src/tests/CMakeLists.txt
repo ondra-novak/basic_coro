@@ -9,6 +9,7 @@ set(testFiles all_compile.cpp
               scheduler.cpp
               scheduler_cycle.cpp
               queue.cpp
+              flat_stack_alloc.cpp
               )
 
 foreach (testFile ${testFiles})

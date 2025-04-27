@@ -280,7 +280,7 @@ public:
      * @return a guard object which automatically clears awaiter when guard left the scope
      */
     awaiter_guard set_awaiter_guard(Awaiter &&awt) {
-        set_awaiter_guard(awt);
+        return set_awaiter_guard(awt);
     }
 
 

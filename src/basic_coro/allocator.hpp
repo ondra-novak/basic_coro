@@ -34,7 +34,7 @@ static_assert(coro_allocator<objstdalloc>);
 
 ///Search arguments and find first
 template<typename T, typename Arg0, typename ... Args>
-std::add_pointer_t<std::remove_reference_t<T> > get_first_arg_of_type(Arg0 && arg0, Args && ...  args) {
+std::add_pointer_t<std::remove_reference_t<T> > get_first_arg_of_type([[maybe_unused]] Arg0 && arg0, [[maybe_unused]]  Args && ...  args) {
     if constexpr(std::is_same_v<std::decay_t<Arg0>, std::decay_t<T> >) {
         return &arg0;
     } else if constexpr (sizeof...(Args) == 0) {

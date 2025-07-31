@@ -30,6 +30,7 @@ namespace coro {
          bool b = awt.await_suspend(handle);
          return b?prepared_coro():prepared_coro(handle);
      } else {
+         awt.await_suspend(handle);
          return {};
      }
  }

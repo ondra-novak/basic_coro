@@ -143,7 +143,7 @@ class coro_frame_cb: public coro_frame<coro_frame_cb<CB> > {
 public:
 
     template<std::convertible_to<CB> X>
-    coro_frame_cb(X &&x):_cb(std::forward<X>(x)) {}
+    constexpr coro_frame_cb(X &&x):_cb(std::forward<X>(x)) {}
 
 protected:
     std::optional<CB> _cb;

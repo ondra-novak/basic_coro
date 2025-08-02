@@ -12,6 +12,6 @@
 #include "async_generator.hpp"
 #include "mutex.hpp"
 #include "queue.hpp"
-#include "aggregator.h"
+#include "aggregator.hpp"
 #include "pmr_allocator.hpp"
 #include "flat_stack_allocator.hpp"

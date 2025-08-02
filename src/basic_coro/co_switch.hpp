@@ -1,7 +1,6 @@
 #pragma once
 
 #include <coroutine>
-#include <queue>
 
 namespace coro {
 
@@ -25,33 +24,8 @@ namespace coro {
 class co_switch : public std::suspend_always{
 public:
 
-    ///allows to push handle to the co_switch queue
-    /**
-     * This function can be used to prevent uncessery recursion. If the
-     * current stack state is result of coroutine resumption, specified
-     * coroutine is resumed after current coroutine is finished or suspended.
-     *
-     * If there is no such coroutine, the function simply resumes h, but
-     * also enables queue for any furher coroutines while current coroutine
-     * is active
-     *
-     * @param h
-     */
-    static void lazy_resume(std::coroutine_handle<> h) {
-        thread_local std::queue<std::coroutine_handle<> > coro_local_queue = {};
-        if (!h) return;
-        bool e= coro_local_queue.empty();
-        coro_local_queue.push(h);
-        if (e) {
-            while (!coro_local_queue.empty()) {
-                coro_local_queue.front().resume();
-                coro_local_queue.pop();
-            }
-        }
-    }
-
     void await_suspend(std::coroutine_handle<> h) {
-        lazy_resume(h);
+        defer_context::get_instance().lazy_resume(h);
     }
 
 };

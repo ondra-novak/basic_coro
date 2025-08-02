@@ -1,7 +1,7 @@
 #pragma once
+#include "defer_impl.hpp"
 #include <memory>
 #include <coroutine>
-#include "co_switch.hpp"
 #include <stdexcept>
 
 
@@ -75,7 +75,7 @@ public:
      * is used during pefroming first lazy_resume (in recursion)
      */
     void lazy_resume() {
-        co_switch::lazy_resume(release());
+        defer_context::get_instance().lazy_resume(release());
     }
 
     ///resume

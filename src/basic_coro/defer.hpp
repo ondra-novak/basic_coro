@@ -28,6 +28,7 @@ void defer(Fn &&fn) {
                   reinterpret_cast<const char *>(&fn)+sizeof(DFn), 
                   reinterpret_cast<char *>(vmap));
         static constexpr coro_frame_cb frame([]{
+            constexpr std::size_t map_size =  (sizeof(DFn)+sizeof(void *)-1)/sizeof(void *);
             alignas(std::max_align_t) void *vmap[map_size];
             auto &ctx = defer_context::get_instance();
             for (auto &m: vmap) m = ctx.pop_in_flush();

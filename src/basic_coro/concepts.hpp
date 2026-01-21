@@ -6,6 +6,8 @@
 
 namespace coro {
 
+
+
 template<typename T>
 concept IsAwaitSuspendResult = std::is_void_v<T> || std::is_convertible_v<T, bool> || std::is_convertible_v<T, std::coroutine_handle<> >;
 

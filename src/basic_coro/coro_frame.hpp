@@ -3,6 +3,7 @@
 #include <coroutine>
 #include <memory>
 #include <optional>
+#include "trace.hpp"
 
 namespace coro {
 
@@ -25,6 +26,15 @@ namespace coro {
 template<typename FrameImpl>
 class basic_coro_frame {
 protected:
+
+#ifdef BASIC_CORO_ENABLE_TRACE
+            basic_coro_frame() {
+                basic_coro_trace_create(std::coroutine_handle<>::from_address(this)) ;
+            }
+            ~basic_coro_frame() {
+                basic_coro_trace_destroy(std::coroutine_handle<>::from_address(this)) ;
+            }
+#endif
 
 
     void (*resume)(std::coroutine_handle<>) = [](std::coroutine_handle<> h) noexcept {
@@ -81,6 +91,15 @@ class emulated_coro_frame {
     public:
 
         struct promise_type {
+#ifdef BASIC_CORO_ENABLE_TRACE
+            promise_type() {
+                basic_coro_trace_create(std::coroutine_handle<promise_type>::from_promise(*this)) ;
+            }
+            ~promise_type() {
+                basic_coro_trace_destroy(std::coroutine_handle<promise_type>::from_promise(*this)) ;
+            }
+#endif
+    
             std::suspend_always initial_suspend() noexcept {return {};}
             std::suspend_never final_suspend() noexcept {return {};}
             adhoccoro get_return_object() {return this;}

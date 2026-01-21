@@ -121,7 +121,7 @@ public:
         return set_value(std::forward<Args>(args)...);
     }
 
-     /// set value
+    /// set value
     template<typename ... Args>
     requires(is_awaitable_valid_result_type<T, Args...>)
     prepared_coro set_value(Args && ... args);
@@ -395,7 +395,12 @@ public:
      * @param h coroutine currently suspended
      * @return coroutine being resumed
      */
+#ifdef BASIC_CORO_ENABLE_TRACE
+    std::coroutine_handle<> await_suspend(std::coroutine_handle<> h, std::source_location loc = std::source_location::current()) {
+        basic_coro_trace_suspend(h, loc);
+#else
     std::coroutine_handle<> await_suspend(std::coroutine_handle<> h) {
+#endif
         _owner = h;
         switch (_state) {
             case State::no_value:
@@ -756,7 +761,9 @@ protected:
 
     prepared_coro wakeup() {
         if (!is_ready()) drop();
-        return prepared_coro(std::exchange(_owner, {}));
+        auto h = std::exchange(_owner, {});
+        basic_coro_trace_resume(h);
+        return prepared_coro(h);
     }
 
     template<typename _Callback, typename _Allocator>

@@ -4,6 +4,8 @@
 #include "allocator.hpp"
 #include "exceptions.hpp"
 #include "sync_await.hpp"
+#include "trace.hpp"
+#include <coroutine>
 #include <utility>
 
 namespace coro {
@@ -111,8 +113,11 @@ public:
 
         };
 
-        promise_type() = default;
+        promise_type() {
+            basic_coro_trace_create(std::coroutine_handle<promise_type>::from_promise(*this));
+        }
         ~promise_type() {
+            basic_coro_trace_destroy(std::coroutine_handle<promise_type>::from_promise(*this));
             this->wakeup();
         }
 
@@ -120,9 +125,17 @@ public:
             return this->_target == nullptr;
         }
 
+        #ifdef BASIC_CORO_ENABLE_TRACE
+        std::suspend_always initial_suspend(std::source_location loc = std::source_location::current())  noexcept {
+            basic_coro_trace_init(std::coroutine_handle<promise_type>::from_promise(*this), loc);
+            return {};
+        }
+        #else
         static constexpr std::suspend_always initial_suspend() noexcept {return {};}
+        #endif
         constexpr finisher final_suspend() noexcept {return {this};}
         void unhandled_exception() {
+            basic_coro_trace_exception(std::coroutine_handle<promise_type>::from_promise(*this));
             if (this->_target) {
                 this->set_exception(std::current_exception());
             } else {

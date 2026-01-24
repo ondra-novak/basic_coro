@@ -2,6 +2,7 @@
 #include "concepts.hpp"
 #include "sync_await.hpp"
 #include "coroutine.hpp"
+#include <exception>
 #include <optional>
 #include <memory>
 
@@ -119,6 +120,15 @@ public:
     requires(is_awaitable_valid_result_type<T, Args...>)
     prepared_coro operator()(Args && ... args) {
         return set_value(std::forward<Args>(args)...);
+    }
+
+    ///callback compatible - set empty result
+    prepared_coro operator()(std::nullopt_t) {
+        return this->set_empty();
+    }
+    ///callback compatible - set exception result
+    prepared_coro operator()(std::exception_ptr e) {
+        return this->set_exception(std::move(e));
     }
 
     /// set value

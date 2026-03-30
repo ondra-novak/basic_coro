@@ -1,6 +1,7 @@
 #pragma once
 #include "awaitable.hpp"
-#include "awaiting_callback.hpp"
+#include "awaitable_transform.hpp"
+#include "basic_coro/concepts.hpp"
 #include <array>
 
 namespace coro {
@@ -235,7 +236,7 @@ public:
      * be useful, if you need move ownership around
      *
      */
-    awaitable<void> lock() {
+    awaitable<void_type> lock() {
         //try lock first
         auto o = locking[0]->try_lock();
         //if success
@@ -250,15 +251,7 @@ public:
             //mark index of failed lock - we will start with them
             first = x;
         }
-        //prepare asynchronous locking
-        return [this](auto res) {
-            //do not process when operation has been canceled
-            if (!res) return prepared_coro{};
-            //store result
-            r = std::move(res);
-            //attempt to lock first
-            return lock_first();
-        };
+        return lock_first();
     }
 
     ///retrieve ownership
@@ -272,9 +265,9 @@ public:
 
 protected:
 
-    prepared_coro lock_complete(awaitable<mutex::ownership> &awt) {
+    awaitable<void_type> lock_complete(mutex::ownership &own) {
         //when lock is complete, remeber ownership
-        owns[first] = awt.await_resume();
+        owns[first] = std::move(own);
         //attempt to lock others
         int x = lock_others();
         //if failed - ownership has been released
@@ -283,17 +276,14 @@ protected:
             first = x;
             //lock it now
             return lock_first();
+        } else {
+            return {};
         }
-        //done, set result and resume
-        return r();
     }
 
-
-
-    prepared_coro lock_first() {
-        //initiate lock - call the callback when done - use cb_buffer to store callback's internals
-        return _cb_completion.await(locking[first]->lock(),[this](awaitable<mutex::ownership> &awt){
-            return lock_complete(awt);
+    awaitable<void_type> lock_first() {
+        return _first_completion(locking[first]->lock(), [this](mutex::ownership own){
+            return lock_complete(own);
         });
     }
 
@@ -326,7 +316,8 @@ protected:
     //result
     awaitable<void>::result r = {};
     ///callback internals
-    awaiting_callback<awaitable<mutex::ownership>, multi_lock *> _cb_completion;
+    awaitable_transform<awaitable<mutex::ownership>, multi_lock *> _first_completion;
+    awaitable_transform<awaitable<void>, multi_lock *> _other_completion;
     //first mutex to lock asynchronously
     int first = 0;
 };

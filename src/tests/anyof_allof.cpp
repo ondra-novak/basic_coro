@@ -3,7 +3,6 @@
 #include <basic_coro/when_each.hpp>
 #include <sstream>
 #include <iostream>
-#include <vector>
 #include <thread>
 
 using namespace coro;

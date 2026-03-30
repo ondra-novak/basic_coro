@@ -1,7 +1,9 @@
 #pragma once
 #include "concepts.hpp"
 #include "sync_await.hpp"
+#include "await_proxy.hpp"
 #include "coroutine.hpp"
+#include "pending.hpp"
 #include <exception>
 #include <optional>
 #include <memory>
@@ -13,63 +15,36 @@ template<typename T> class awaitable;
 template<typename T> class awaitable_result;
 
 
-///Implements awaiter proxy, which can be used to convert return value to different return value
+///this template class represents a result of asynchronous operation. It serves as a promise.
 /**
- * @tparam Awt type of awaiter
- * @tparam Callback type of callback. It must be callable with awaiter as first argument and return value of awaitable<T> type
- *
- * This class is used to convert awaiter to different type. It is used in the following way:
- *
- * @code
- * auto awt = awaitable_function();
- * awaiter_proxy proxy(awt, [](auto &awt) {
- *      return awt.await_resume()*42;
- * });
- * auto res = co_await proxy;
- * @endcode
+    @tparam T type of result. It can be void. In this case, you can set empty result, which is treated as canceled operation.
+
+    The template acts as invocable. You can invoke it with arguments to construct result.
+    If called with std::nullopt, it sets empty result, which is treated as canceled operation. 
+    You can also set exception as result by calling with std::exception_ptr.
+    Not calling result and destroying it is also treated as canceled operation.
+
+    There are also an alternative api. You can set result by assigning to it. 
+    You can assign value, std::nullopt or std::exception_ptr.
+
+    There are also more descriptive methods set_value, set_exception and set_empty, 
+    which do the same as operator() and operator= but with more descriptive name.
+
+    Because object is invokable, it can be used as callback for asynchronous operations. It should be possible to convert object to std::function.
+
+    By setting value, exception or nullopt, the operation returns prepared_coro,
+    which can be used to postpone resumption of awaiting coroutine. 
+    If you discard the result, the awaiting coroutine is resumed immediately.
+
+    Object is movable.
+
+    Object can be default constructed, in this state, all operations are no-op.
+    You can test such state by operator bool. It returns false if object is in uninitialized state, and true otherwise.
+
  */
-template<is_awaiter Awt, std::invocable<Awt &> Callback>
-class awaiter_proxy {
-public:
-
-    awaiter_proxy(Awt &awt, Callback &&cb):_awaiter(awt), _callback(std::forward<Callback>(cb)) {}
-    awaiter_proxy( awaiter_proxy &&) = default;
-
-    bool await_ready() const {return _awaiter.await_ready();}
-    auto await_suspend(std::coroutine_handle<> h) {
-        return _awaiter.await_suspend(h);
-    }
-    auto await_resume() {
-        return _callback(_awaiter);
-    }
-
-    ///synchronous get value
-    decltype(auto) get() {
-        return sync_await(*this);
-    }
-    ///synchronous get value();
-    decltype(auto) operator *() {
-        return get();
-    }
-    ///wait but don't get value;
-    void wait() {
-        if (await_ready()) {
-            sync_frame fr;
-            await_suspend(fr.create_handle()).resume();
-            fr.wait();
-        }
-    }
-
-protected:
-    Awt &_awaiter;
-    Callback _callback;
-};
-
-
 template<typename T>
 class [[nodiscard]] awaitable_result {
 public:
-
     ///construct uninitialized
     /**
      * Uninitialized object can be used, however it will not invoke any
@@ -85,6 +60,7 @@ public:
 
     using const_reference = std::add_lvalue_reference_t<std::add_const_t<std::conditional_t<std::is_void_v<T>, void_type, T> > >;
     using rvalue_reference = std::add_rvalue_reference_t<std::conditional_t<std::is_void_v<T>, void_type, T> > ;
+    using value_type = T;
 
     ///set the result
     /**
@@ -172,9 +148,6 @@ protected:
         void operator()(awaitable<T> *ptr) const;
     };
     std::unique_ptr<awaitable<T>, deleter> _ptr;
-
-
-
 };
 
 ///allows to override reserved space in awaitable class for given T
@@ -578,7 +551,7 @@ public:
     ///evaluate asynchronous operation, waiting for result synchronously
     void wait();
 
-
+    
     ///copy evaluated awaitable object.
     /**
      * If the object has value or exception, returned object contains copy
@@ -679,8 +652,12 @@ public:
      * @note after forward operation, current awaiter is in uninicialized state
      *
      */
-    void forward(result &&r) {
-        forward(r);
+    auto forward(result &&r) {
+        return forward(r);
+    }
+
+    auto launch() {
+        return pending<awaitable<T> >(std::move(*this));
     }
 
 protected:
@@ -857,4 +834,5 @@ inline prepared_coro awaitable_result<T>::set_empty()
     }
     return {};
 }
+
 }

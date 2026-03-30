@@ -1,7 +1,6 @@
 #pragma once
 
 #include "concepts.hpp"
-#include "exceptions.hpp"
 
 namespace coro {
 

@@ -38,7 +38,7 @@ int main() {
     std::ostringstream buff;
     scheduler sch;
     sch.await(coro_test_master(sch,buff));
-    if (buff.view() != "6|2|4|5|1|3|") return 1;
+    CHECK(buff.str() == "6|2|4|5|1|3|");
     return 0;
 }
 

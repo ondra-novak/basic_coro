@@ -1,19 +1,17 @@
 #include <basic_coro/scheduler.hpp>
-#include <basic_coro/when_all.hpp>
+
 
 #include "check.h"
 
-#include <iostream>
-#include <sstream>
 
 using namespace coro;
 
 
-awaitable<int> cycle_coro(scheduler &sch, alert_flag &flag) {
+awaitable<int> cycle_coro(scheduler &sch, cancel_signal &flag) {
     int count_cycles = 0;
-    while (!flag.test_and_reset()) {
+    while (!flag) {
         count_cycles++;
-        co_await sch.sleep_for_alertable(flag, std::chrono::milliseconds(100));
+        co_await sch.sleep_for(std::chrono::milliseconds(100),&flag);
         co_await sch.sleep_for(std::chrono::milliseconds(100));
     }
     co_return count_cycles;
@@ -21,14 +19,12 @@ awaitable<int> cycle_coro(scheduler &sch, alert_flag &flag) {
 
 
 awaitable<int> main_coro(scheduler &sch, std::chrono::milliseconds ms) {
-    alert_flag flag;
+    cancel_signal flag;
 
-    awaitable<int> c = cycle_coro(sch, flag);
-    when_all s(c);
+    auto c = cycle_coro(sch, flag).launch();
     co_await sch.sleep_for(ms);
-    sch.alert(flag);
-    co_await s;
-    co_return c.await_resume();
+    sch.cancel(&flag);
+    co_return co_await c;
 
 }
 

@@ -3,7 +3,7 @@
 #include "awaitable.hpp"
 #include <vector>
 #include <algorithm>
-#include "alert_flag.hpp"
+#include "cancel_signal.hpp"
 #include "basic_lockable.hpp"
 
 namespace coro {
@@ -37,14 +37,14 @@ public:
 
     ///register coroutine to receive broadcast with alert support
     /**
-     * @param alert_flag reference to alert flag. This must be set to false to register. If
+     * @param cancel_signal reference to alert flag. This must be set to false to register. If
      * it is set to true, the co_await immediately returns
      *
      * @see alert
      */
-    awaitable operator()(alert_flag &aflag) {
-        return [this,&aflag](result_object r){
-            return add_listener(aflag, std::move(r));
+    awaitable operator()(cancel_signal &cflag) {
+        return [this,&cflag](result_object r){
+            return add_listener(cflag, std::move(r));
         };
     }
 
@@ -53,7 +53,7 @@ public:
         _results.push_back({std::move(r), id});
 
     }
-    prepared_coro add_listener(alert_flag &a, result_object r) {
+    prepared_coro add_listener(cancel_signal &a, result_object r) {
         lock_guard _(_mx);
         if (a) return r.set_empty();
         _results.push_back({std::move(r), &a});
@@ -148,7 +148,7 @@ public:
 
     ///send alert to prevent a coroutine to receive broadcast
     /**
-     * @param alert_flag shared flag. This flag is set to true to prevent registration
+     * @param cancel_signal shared flag. This flag is set to true to prevent registration
      * @param id ident of coroutine, it causes that if coroutine is already registered, it
      * is removed
      * @return prepared coro object. It is filled when registered coroutine was removed. You
@@ -157,12 +157,12 @@ public:
      *
      * @note the co_await always throws exception await_canceled_exception.
      */
-    prepared_coro alert(alert_flag &alert_flag) {
+    prepared_coro alert(cancel_signal &cancel_signal) {
         prepared_coro out;
         lock_guard _(_mx);
-        alert_flag.set();
+        cancel_signal.request_cancel();
         auto iter = std::find_if(_results.begin(), _results.end(), [&](const awaiting_info &x){
-            return x.i == &alert_flag;
+            return x.i == &cancel_signal;
         });
         if (iter != _results.end()) {
             out = (iter->r = std::nullopt);

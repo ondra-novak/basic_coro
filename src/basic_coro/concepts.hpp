@@ -1,4 +1,5 @@
 #pragma once
+#include <concepts>
 #include <coroutine>
 #include <type_traits>
 #include <iterator>
@@ -110,6 +111,10 @@ concept is_awaitable_valid_result_type = (
 ///replaces simple void everywhere valid type is required
 struct void_type {};
 template<typename T> using voidless_type = std::conditional_t<std::is_void_v<T>, void_type, T>;
+
+template<typename T> concept has_has_value = requires(T val) {
+    {val.has_value()}->std::convertible_to<bool>;
+};
 
 
 }

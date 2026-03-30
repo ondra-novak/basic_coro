@@ -1,6 +1,7 @@
 #include <basic_coro/basic_coro.hpp>
+#include <basic_coro/result_proxy.hpp>
 #include <iostream>
-#include <basic_coro/reactive.hpp>
+
 
 
 
@@ -13,7 +14,6 @@ template class coro::awaitable<int &>;
 template class coro::distributor<const int>;
 template class coro::pmr_allocator<>;
 
-template class coro::awaiting_callback<coro::awaitable<int>, int, float, std::string>;
 
 int main() {
     std::cout << sizeof(coro::awaitable<int>) << std::endl;

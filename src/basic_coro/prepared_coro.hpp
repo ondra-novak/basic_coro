@@ -1,8 +1,8 @@
 #pragma once
-#include "defer_impl.hpp"
 #include <memory>
 #include <coroutine>
-#include <stdexcept>
+#include <queue>
+#include "exceptions.hpp"
 
 
 namespace coro {
@@ -75,7 +75,17 @@ public:
      * is used during pefroming first lazy_resume (in recursion)
      */
     void lazy_resume() {
-        defer_context::get_instance().lazy_resume(release());
+        static thread_local std::queue<std::coroutine_handle<>> _lazy_queue;
+        if (!_h) return;        
+        if (_lazy_queue.empty()) {
+            _lazy_queue.push(release());
+            while (!_lazy_queue.empty()) {
+                _lazy_queue.front().resume();
+                _lazy_queue.pop();
+            }
+        } else {
+            _lazy_queue.push(release());
+        }
     }
 
     ///resume
@@ -100,7 +110,7 @@ public:
         prepared_coro get_return_object() noexcept {
             return prepared_coro(std::coroutine_handle<promise_type>::from_promise(*this));}
         void return_void() noexcept {}
-        void unhandled_exception() noexcept {std::terminate();}
+        void unhandled_exception() noexcept {async_unhandled_exception();}
     };
 
 

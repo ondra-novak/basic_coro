@@ -1,6 +1,6 @@
 #pragma once
 
-#include "defer_impl.hpp"
+#include "prepared_coro.hpp"
 #include <coroutine>
 
 namespace coro {
@@ -26,7 +26,7 @@ class co_switch : public std::suspend_always{
 public:
 
     void await_suspend(std::coroutine_handle<> h) {
-        defer_context::get_instance().lazy_resume(h);
+        prepared_coro(h).lazy_resume();
     }
 
 };

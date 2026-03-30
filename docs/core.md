@@ -181,3 +181,103 @@ frame.create_handle().resume();  // count == 1
 ```
 
 **When to use:** Write your own `coro_frame` when you need an object to receive resumption events (i.e., be usable as the `h` in `await_suspend(h)`) but you don't want the overhead of a full coroutine allocation.
+
+## 2. Async Tools
+
+### `awaitable<T>` and `awaitable_result<T>`
+
+`awaitable<T>` is the central result type. It is both what you `co_await` and what you return from async functions. Think of it as a one-shot future that can also carry its own async operation.
+
+**Four ways to construct an `awaitable<T>`:**
+
+```cpp
+// 1. Already-resolved value
+coro::awaitable<int> a = 42;
+
+// 2. Cancelled / no value
+coro::awaitable<int> b = std::nullopt;
+
+// 3. Async operation via callback lambda
+//    The lambda receives awaitable_result<T> and must call it exactly once
+coro::awaitable<int> c = [](coro::awaitable_result<int> result) {
+    // start async work; call result when done
+    start_background_work([r = std::move(result)]() mutable {
+        r(42);          // set value
+        // or: r(std::nullopt)             — cancel
+        // or: r(std::current_exception()) — propagate exception
+    });
+};
+
+// 4. Wrapping a coroutine
+coro::awaitable<int> d = compute(21);  // coroutine<int> implicitly converts
+```
+
+**Awaiting:**
+
+```cpp
+coro::awaitable<int> my_op() {
+    int v = co_await get_value_async();   // blocks coroutine, not thread
+    co_return v + 1;
+}
+```
+
+**Synchronous wait** (from non-coroutine code):
+
+```cpp
+int result = some_awaitable.get();  // blocks the thread
+```
+
+**Callback instead of co_await:**
+
+```cpp
+coro::awaitable<int> awt = get_value_async();
+awt >> [](coro::awaitable<int> &resolved) {
+    std::cout << *resolved << '\n';  // called once resolved
+};
+```
+
+**`awaitable_result<T>` — the promise side**
+
+`awaitable_result<T>` is what an async operation receives to deliver its result. It is a `[[nodiscard]]` move-only callback object.
+
+```cpp
+coro::awaitable<int> wrap_timer(int ms) {
+    return [ms](coro::awaitable_result<int> result) {
+        // result acts as a callable — invoke with value, nullopt, or exception_ptr
+        start_timer(ms, [r = std::move(result)]() mutable {
+            r(0);  // timer fired, deliver result
+        });
+    };
+}
+```
+
+Setting the result resumes the awaiting coroutine and returns a `prepared_coro`. If you discard it, the coroutine resumes immediately. Hold it to delay resumption:
+
+```cpp
+coro::prepared_coro pc = result(42);  // coroutine not yet resumed
+// ... do other work ...
+// pc destroyed here → coroutine resumes
+```
+
+Three equivalent ways to set the result:
+
+```cpp
+result(42);                         // operator()
+result = 42;                        // operator=
+result.set_value(42);               // explicit method
+result(std::nullopt);               // cancel
+result(std::current_exception());   // propagate exception
+```
+
+**Checking state before extracting:**
+
+```cpp
+// Non-throwing check
+bool ok = co_await awt.ready();  // waits, then returns has_value()
+if (ok) {
+    int v = awt.await_resume();  // extract (may throw if exception stored)
+}
+
+// Optional form
+auto opt = co_await awt.as_optional();  // std::optional<int>
+```

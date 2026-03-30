@@ -281,3 +281,97 @@ if (ok) {
 // Optional form
 auto opt = co_await awt.as_optional();  // std::optional<int>
 ```
+
+### `pending<T>` — launch now, synchronize later
+
+`pending<T>` lets you start an async operation immediately and synchronize with it later via `co_await`. This lets you overlap the async operation with other work in the same coroutine.
+
+```cpp
+#include <basic_coro/pending.hpp>
+
+coro::coroutine<void> example() {
+    // Start operation immediately — does NOT suspend the coroutine
+    coro::pending<coro::awaitable<int>> p(fetch_data());
+
+    // Do other work here while fetch_data() runs
+    do_local_work();
+
+    // Now synchronize — suspends only if not yet done
+    int result = co_await p;
+    use(result);
+}
+```
+
+`pending<T>` is not movable and **must be `co_await`ed before destruction** (asserts in debug builds).
+
+Shorthand via `awaitable::launch()`:
+
+```cpp
+auto p = fetch_data().launch();  // same as pending<awaitable<int>>(fetch_data())
+int r = co_await p;
+```
+
+With a custom executor (e.g. a thread pool):
+
+```cpp
+coro::pending<coro::awaitable<int>> p(
+    fetch_data(),
+    [&pool](coro::prepared_coro pc) { pool.submit(std::move(pc)); }
+);
+int r = co_await p;
+```
+
+### `awaitable_transform` — transform results without heap allocation
+
+`awaitable_transform<Awt, Closure...>` is a **reusable** member object that transforms the result of an awaitable (`.then()` pattern). Storage for the awaiter and closure is pre-allocated inside the object — no heap allocation per call.
+
+```cpp
+#include <basic_coro/awaitable_transform.hpp>
+
+// Declare as a member — reuse across calls
+coro::awaitable_transform<coro::awaitable<int>, int> transform;
+
+// Each call:
+auto result_awt = transform(
+    fetch_raw_value(),               // the source awaitable (moved in)
+    [](int raw) { return raw * 2; }  // transformation function
+);
+int r = co_await result_awt;
+```
+
+The closure is **not called** if the source resolves to `nullopt` or exception — those pass through unchanged.
+
+The closure can return another `awaitable`, which chains an additional async wait:
+
+```cpp
+auto chained = transform(
+    fetch_id(),
+    [](int id) -> coro::awaitable<std::string> {
+        return fetch_name_by_id(id);  // second async hop
+    }
+);
+std::string name = co_await chained;
+```
+
+Recursion inside the closure is supported (the frame is cleaned up before the predicate runs):
+
+```cpp
+coro::awaitable<int> bump_to_100(coro::awaitable<int> awt,
+    coro::awaitable_transform<coro::awaitable<int>, int, int> &tr)
+{
+    return tr(std::move(awt), [&tr](int v) -> coro::awaitable<int> {
+        if (v >= 100) return v;
+        return bump_to_100(coro::awaitable<int>([v](auto p){ p(v+1); }), tr);
+    });
+}
+```
+
+**Important:** `awaitable_transform` is not thread-safe and not reentrant at the same call boundary (the object must not be called again before the previous call's async operation completes). Declare one per async interface method.
+
+Template arguments specify the **maximum sizes** to pre-allocate. The actual types passed at each call must fit within those sizes (checked at compile time):
+
+```cpp
+// Awt = awaitable<int>  → sets awaiter buffer size
+// int (first Closure)   → sets closure buffer size
+coro::awaitable_transform<coro::awaitable<int>, int> tr;
+```

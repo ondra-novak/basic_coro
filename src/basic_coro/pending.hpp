@@ -1,9 +1,9 @@
 #pragma  once
 
-#include "basic_coro/await_proxy.hpp"
-#include "basic_coro/concepts.hpp"
-#include "basic_coro/coro_frame.hpp"
-#include "basic_coro/prepared_coro.hpp"
+
+#include "concepts.hpp"
+#include "coro_frame.hpp"
+#include "prepared_coro.hpp"
 #include <atomic>
 #include <cassert>
 #include <coroutine>

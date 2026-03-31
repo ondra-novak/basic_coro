@@ -73,6 +73,36 @@ void test_async_awaiter_return_awaiter() {
     CHECK_EQUAL(r, 100);
 }
 
+template<typename X>
+struct custom_result{
+
+    coro::awaitable_result<X> _x;
+
+    custom_result(coro::awaitable_result<X> x): _x(std::move(x)) {}
+
+    void operator()(X v) {
+        CHECK_EQUAL(v, 10);
+        _x(10);
+    }
+    void operator()(std::exception_ptr v) {
+        CHECK(false);
+        _x(v);
+    }
+    void operator()(std::nullopt_t v) {
+        _x(v);
+    }
+    operator coro::awaitable_result<X> &&() && {return std::move(_x);}
+};
+
+void test_async_awaiter_custom_result() {
+    coro::awaitable_transform_r<custom_result, coro::awaitable<int>, int,int> trn;
+    coro::awaitable<int> val = [](auto promise){return promise(42);};
+    auto resawt = trn(std::move(val),[](int v){return v-32;});
+    int r = coro::sync_await(resawt);
+    CHECK_EQUAL(r, 10);
+}
+
+
 int main() {
     test_async_awaiter_return_awaiter();
     test_ready_awaiter_return_value();
@@ -81,4 +111,5 @@ int main() {
     test_async_awaiter_return_value();
     test_async_awaiter_return_nullopt();
     test_async_awaiter_return_exception();
+    test_async_awaiter_custom_result();
 }

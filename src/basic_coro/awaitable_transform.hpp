@@ -8,7 +8,7 @@
 #include "universal_storage.hpp"
 #include <cstdint>
 #include <exception>
-#include <functional>
+#include "safe_invoke.hpp"
 #include <optional>
 #include <type_traits>
 
@@ -160,7 +160,7 @@ public:
                         //check whether there is an result - if not - just forward nullopt
                         if (!awtptr->has_value()) {
                             //set result and exit (auto cleanup)
-                            return std::invoke(result, std::nullopt);
+                            return invoke_force_result<prepared_coro>(result, std::nullopt);
                         }
                         //now we know, there is a value
                     }
@@ -172,7 +172,7 @@ public:
                     //now the result can be a value, if it is this case, we are done
                     if constexpr(!is_awaiter<PredResult>) {
                             //set result and exit (auto cleanup)
-                            return std::invoke(result, std::move(finres));
+                            return invoke_force_result<prepared_coro>(result, std::move(finres));
                     } else {
                         //forward result to async operation behind returned awaiter and return handle to newly created corotuine                        
                         return finres.forward(std::move(result));
@@ -180,7 +180,7 @@ public:
 
                 } catch (...) {
                     //set exception and exit
-                    return std::invoke(result, std::current_exception());
+                    return invoke_force_result<prepared_coro>(result, std::current_exception());
                 }
                 
             };

@@ -1,9 +1,9 @@
 #include "check.h"
-#include "../basic_coro/flat_stack_allocator.hpp"
-#include "../basic_coro/pmr_allocator.hpp"
-#include "../basic_coro/coroutine.hpp"
-#include "../basic_coro/awaitable.hpp"
-#include "../basic_coro/co_switch.hpp"
+#include <basic_coro/flat_stack_allocator.hpp>
+#include <basic_coro/pmr_allocator.hpp>
+#include <basic_coro/coroutine.hpp>
+#include <basic_coro/awaitable.hpp>
+#include <basic_coro/co_switch.hpp>
 
 
 coro::coroutine<int, coro::pmr_allocator<> > recursive_fibo(coro::pmr_allocator<> alloc, int val) {

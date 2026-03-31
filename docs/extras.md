@@ -64,17 +64,16 @@ Thread-safety: pass `std::mutex` as the Lock template parameter for multi-thread
 coro::distributor<int> dist;
 
 // Listener (register with operator()):
-coro::coroutine<void> listener(int id) {
+coro::coroutine<void> listener(cancel_signal *sig) {
     while (true) {
-        int v = co_await dist(id);   // id is an identification token
+        int v = co_await dist(sig);   // id is an identification token
         process(v);
     }
 }
 
 // Broadcaster:
 dist.broadcast(42);        // wakes all waiting listeners
-dist.kick_out(id);         // wakes one listener with await_canceled_exception
-dist.alert(cancel_sig);    // wakes all listeners associated with a cancel_signal
+dist.cancel(cancel_sign);  // wakes one listener with await_canceled_exception
 ```
 
 ---

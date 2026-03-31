@@ -28,3 +28,4 @@ Header-only C++20 coroutine library providing awaitables, schedulers, synchroniz
 
 - [core.md](core.md) — coroutines + async tools (main reference)
 - [extras.md](extras.md) — mutex, queue, distributor, scheduler, generator, dispatch_thread
+- [trace.md](trace.md) — coroutine lifecycle tracing (`-DBASIC_CORO_ENABLE_TRACE`)

@@ -17,7 +17,7 @@ public:
     using awaitable = coro::awaitable<T>;
     using result_object = typename awaitable::result;
     using prepared = std::vector<prepared_coro>;
-    using ident = const void *;
+    using ident = cancel_signal *;
 
     struct awaiting_info {
         result_object r;
@@ -35,28 +35,11 @@ public:
         };
     }
 
-    ///register coroutine to receive broadcast with alert support
-    /**
-     * @param cancel_signal reference to alert flag. This must be set to false to register. If
-     * it is set to true, the co_await immediately returns
-     *
-     * @see alert
-     */
-    awaitable operator()(cancel_signal &cflag) {
-        return [this,&cflag](result_object r){
-            return add_listener(cflag, std::move(r));
-        };
-    }
 
-    void add_listener(result_object r, ident id = {}) {
+    prepared_coro add_listener(result_object r, cancel_signal *a) {
         lock_guard _(_mx);
-        _results.push_back({std::move(r), id});
-
-    }
-    prepared_coro add_listener(cancel_signal &a, result_object r) {
-        lock_guard _(_mx);
-        if (a) return r.set_empty();
-        _results.push_back({std::move(r), &a});
+        if (a && *a) return r.set_empty();
+        _results.push_back({std::move(r), a});
         return {};
     }
 
@@ -93,76 +76,12 @@ public:
         _ready_to_run.clear();
     }
 
-    ///kicks out awaiting coroutine
-    /**
-     * @param id identification of coroutine (used during registration). If the id
-     * is not unique, a random coroutine with equal id is kicked out - but only one (not recommended)
-     * @param resolver function receives result object. It should set result to wake up the coroutine
-     *  the function should return prepared_coro, which is returned from the function.
-     * @return Returns prepared_coro instance of kicked out coroutine. If there is no such
-     * coroutine, empty is returned. The result also depends on return value of the resolver
-     */
-    template<std::invocable<result_object> Resolver>
-    prepared_coro kick_out(ident id, Resolver &&resolver) {
-        lock_guard _(_mx);
-        prepared_coro out;
-        auto iter = std::find_if(_results.begin(), _results.end(), [&](const awaiting_info &x){
-            return x.i == id;
-        });
-        if (iter != _results.end()) {
-            if constexpr(std::is_void_v<std::invoke_result_t<Resolver, result_object> >) {
-                resolver(std::move(iter->r));
-            } else {
-                out = resolver(std::move(iter->r));
-            }
-            auto last = _results.end();
-            --last;
-            if (iter != last) std::swap(*iter, *last);
-            _results.pop_back();
-        }
-        return out;
-    }
-
-    ///kicks out awaiting coroutine sending out an exception
-    /**
-     * @param id identification
-     * @param e exception
-     * @return prepared coroutine for resumption or empty, if none
-     */
-    prepared_coro kick_out(ident id, std::exception_ptr e) {
-        return kick_out(id, [e = std::move(e)](result_object obj) mutable {
-            return obj.set_exception(std::move(e));
-        });
-    }
-
-    ///kicks out awaiting coroutine setting result to "no-value"
-    /**
-     * @param id identification
-     * @return prepared coroutine
-     */
-    prepared_coro kick_out(ident id) {
-        return kick_out(id, [](result_object obj) mutable {
-            return obj = std::nullopt;
-        });
-    }
-
-    ///send alert to prevent a coroutine to receive broadcast
-    /**
-     * @param cancel_signal shared flag. This flag is set to true to prevent registration
-     * @param id ident of coroutine, it causes that if coroutine is already registered, it
-     * is removed
-     * @return prepared coro object. It is filled when registered coroutine was removed. You
-     * need to resume it (just drop the object) to give coroutine chance to process
-     * this situation. The coroutine can check shared flag.
-     *
-     * @note the co_await always throws exception await_canceled_exception.
-     */
-    prepared_coro alert(cancel_signal &cancel_signal) {
+    prepared_coro cancel(cancel_signal *cancel_signal) {
         prepared_coro out;
         lock_guard _(_mx);
-        cancel_signal.request_cancel();
+        cancel_signal->request_cancel();
         auto iter = std::find_if(_results.begin(), _results.end(), [&](const awaiting_info &x){
-            return x.i == &cancel_signal;
+            return x.i == cancel_signal;
         });
         if (iter != _results.end()) {
             out = (iter->r = std::nullopt);

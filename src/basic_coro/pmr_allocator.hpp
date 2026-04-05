@@ -1,6 +1,7 @@
 #pragma once
 
 #include "allocator.hpp"
+#include <cstddef>
 #include <memory_resource>
 
 namespace coro {
@@ -30,7 +31,7 @@ namespace coro {
                 return me->allocate(sz);
             }
             void operator delete(void *ptr, std::size_t sz) {
-                pmr_allocator *me = reinterpret_cast<pmr_allocator *>(ptr_plus_bytes(ptr, sz));
+                pmr_allocator *me = reinterpret_cast<pmr_allocator *>(ptr_plus_bytes(ptr, static_cast<std::ptrdiff_t>(sz)));
                 me->deallocate(ptr, sz);
             }
         };
@@ -42,7 +43,7 @@ namespace coro {
 
         void *allocate(std::size_t sz) {
             void *r = _mem_res->allocate(sz+sizeof(pmr_allocator));
-            new(ptr_plus_bytes(r, sz)) pmr_allocator(*this);
+            new(ptr_plus_bytes(r, static_cast<std::ptrdiff_t>(sz))) pmr_allocator(*this);
             return r;
         }
 

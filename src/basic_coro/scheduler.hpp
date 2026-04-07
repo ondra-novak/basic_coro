@@ -139,14 +139,15 @@ protected:
  * @tparam _TP time point type. Must support addition with duration and comparison operators
  * @tparam result_object type of the result object returned by the scheduler    
  */
-template<typename _TP = std::chrono::system_clock::time_point, typename result_object = typename awaitable<void>::result>
+template<typename _TP = std::chrono::system_clock::time_point>
 class manual_scheduler {
 public:
 
+    using result_object = typename awaitable<bool>::result;
 
-    awaitable<void> sleep_until(_TP tp, cancel_signal *cflag = nullptr) {
+    awaitable<bool> sleep_until(_TP tp, cancel_signal *cflag = nullptr) {
         return [this,tp=std::move(tp),cflag](result_object r) mutable -> prepared_coro {
-            if (cflag && *cflag) return r();
+            if (cflag && *cflag) return r(false);
             _sch.schedule_at(std::move(r), std::move(tp), cflag);
             return prepared_coro();
         };
@@ -154,8 +155,8 @@ public:
 
     template<typename Dur>
     requires(requires(_TP tp, Dur dur){{tp+dur}->std::convertible_to<_TP>;})
-    awaitable<void> sleep_for_alertable(Dur dur, cancel_signal *csignal = nullptr) {
-        return sleep_until_alertable(get_current_time()+dur, csignal);
+    awaitable<bool> sleep_for(Dur dur, cancel_signal *csignal = nullptr) {
+        return sleep_until(get_current_time()+dur, csignal);
     }
     ///retrive first scheduled time
     std::optional<std::chrono::system_clock::time_point> get_first_scheduled_time() const {
@@ -177,10 +178,10 @@ public:
       * @return result object of canceled coroutine, or empty if nothing has been canceled.
          You need to call result object with result value to resume coroutine.
       */
-    result_object cancel(cancel_signal *cflag) {
-        if (!cflag) return result_object();
+    prepared_coro cancel(cancel_signal *cflag) {
+        if (!cflag) return {};
         cflag->request_cancel();
-        return _sch.remove_by_ident(cflag);
+        return _sch.remove_by_ident(cflag)(false);
      }
 
      ///retrieves current time
@@ -196,12 +197,15 @@ public:
       * @return result object of the first scheduled coroutine, or empty if there is no scheduled coroutine before target_time.
       * You need to call result object with result value to resume coroutine. 
       */
-     result_object advance_time_until(_TP target_time) {
-        _TP n = _sch.get_first_scheduled_time();
-        if (!n || *n>target_time) return {};
-        _current_time = std::max(target_time,n);
+     prepared_coro advance_time_until(_TP target_time) {
+        auto n = _sch.get_first_scheduled_time();
+        if (!n || *n>target_time) {
+            _current_time = target_time;
+            return {};
+        }
+        _current_time = std::max(target_time,*n);
         result_object r = _sch.remove_first();
-        return r;
+        return r(true);
      }
 
 protected:

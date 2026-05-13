@@ -43,12 +43,13 @@ public:
         T r;
         for (std::size_t i = 0, cnt = _heap.size();i<cnt; ++i) {
             if (_heap[i].ident == ident) {
-                r = std::move(_heap[i].res);
                 if (i == 0) {
                     r = remove_first();
                 } else if (i == cnt-1) {
+                    r = std::move(_heap[i].res);
                     _heap.pop_back();
                 } else {
+                    r = std::move(_heap[i].res);
                     update_heap_element(i, std::move(_heap.back()));
                     _heap.pop_back();
                 }

@@ -722,7 +722,10 @@ protected:
         try {
             _state = State::value;
             void *trg = const_cast<std::remove_const_t<store_type> *>(&_value);
-            if constexpr (sizeof...(Args) == 1 && (std::is_invocable_r_v<store_type, Args>  && ...)) {
+            ///exact type is constructed directly
+            if constexpr (sizeof...(Args) == 1 && (std::is_same_v<std::decay_t<Args>, store_type> && ...)) {
+                new(trg) store_type(std::forward<Args>(args)...);
+            } else if constexpr (sizeof...(Args) == 1 && (std::is_invocable_r_v<store_type, Args>  && ...)) {
                 new(trg) store_type((...,args()));
             } else if constexpr (sizeof...(Args) == 1 && (std::is_same_v<std::nullopt_t, std::decay_t<Args> > &&...)) {
                 _state = State::no_value;

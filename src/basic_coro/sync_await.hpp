@@ -16,7 +16,7 @@ namespace coro {
  * because the awaiter's result is accessed from a different thread.
  */
 template<is_awaitable T>
-inline awaiter_result<T> sync_await(T &&awt);
+inline decltype(auto) sync_await(T &&awt);
 
 
 
@@ -53,19 +53,14 @@ class sync_frame: public coro_frame<sync_frame> {
 
 
 template<is_awaitable T>
-inline awaiter_result<T> sync_await(T &&awt) {
-    if constexpr(has_co_await<T>) {
-        return sync_await(awt.operator co_await());
-    } else if constexpr(has_global_co_await<T>) {
-        return sync_await(operator co_await(awt));
-    } else {
-        if (awt.await_ready()) return awt.await_resume();
+inline decltype(auto) sync_await(T &&awt) {
+    decltype(auto) awaiter = extract_awaiter(std::forward<T>(awt));
+    if (!awaiter.await_ready()) {
         sync_frame sf;
-        auto h = sf.create_handle();
-        call_await_suspend(awt,h);
+        call_await_suspend(awaiter, sf.create_handle());
         sf.wait();
-        return awt.await_resume();
     }
+    return awt.await_resume();    
 }
 
 

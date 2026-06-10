@@ -8,14 +8,24 @@
 namespace coro {
 
 
+template<typename T>
+struct is_coroutine_handle : std::false_type {};
+
+template<typename Promise>
+struct is_coroutine_handle<std::coroutine_handle<Promise>> : std::true_type {};
+
 
 template<typename T>
-concept IsAwaitSuspendResult = std::is_void_v<T> || std::is_convertible_v<T, bool> || std::is_convertible_v<T, std::coroutine_handle<> >;
+constexpr bool is_coroutine_handle_v = is_coroutine_handle<T>::value;
+
+
+template<typename T>
+concept await_suspend_result = std::is_void_v<T> || std::is_convertible_v<T, bool> || is_coroutine_handle_v<T>;
 
 template<typename T>
 concept is_awaiter = requires(T a, std::coroutine_handle<> h) {
-    {a.await_ready()} -> std::same_as<bool>;
-    {a.await_suspend(h)} -> IsAwaitSuspendResult;
+    {a.await_ready()} -> std::convertible_to<bool>;
+    {a.await_suspend(h)} -> await_suspend_result;
     {a.await_resume()};
 };
 
@@ -32,11 +42,33 @@ concept has_global_co_await = requires(T a) {
 template<typename T>
 concept is_awaitable = is_awaiter<T> || has_global_co_await<T> || has_co_await<T>;
 
+
+template<is_awaitable T>
+decltype(auto) extract_awaiter(T&& value) {
+    if constexpr (has_co_await<T>) {
+        return std::forward<T>(value).operator co_await();
+    }
+    else if constexpr (has_global_co_await<T>) {
+        return operator co_await(std::forward<T>(value));
+    }
+    else {
+        return std::forward<T>(value);
+    }
+}
+
+template<is_awaitable T>
+using extract_awaiter_t = decltype(extract_awaiter(std::declval<T>()));
+
 template<typename T>
 concept range_for_iterable = requires(T t) {
     { std::begin(t) } -> std::input_or_output_iterator;
     { std::end(t) } -> std::input_or_output_iterator;
     requires std::sentinel_for<decltype(std::end(t)), decltype(std::begin(t))>;
+};
+
+template<is_awaitable T>
+struct awaiter_result_def {
+    using type = decltype(extract_awaiter(std::declval<T>()).await_resume());
 };
 
 ///definition of allocator interface
@@ -49,20 +81,6 @@ concept coro_allocator = (requires(T &val, void *ptr, std::size_t sz, float b, c
     {T::overrides::operator delete(ptr, sz)};
 });  //void can be specified in meaning of default allocator
 
-template<typename T>
-struct awaiter_result_def;
-template<is_awaiter T>
-struct awaiter_result_def<T> {
-    using type = decltype(std::declval<T>().await_resume());
-};
-template<has_co_await T>
-struct awaiter_result_def<T> {
-    using type = decltype(std::declval<T>().operator co_await().await_resume());
-};
-template<has_global_co_await T>
-struct awaiter_result_def<T> {
-    using type = decltype(operator co_await(std::declval<T>()).await_resume());
-};
 
 ///Determines type returned by the awaiter
 template<is_awaitable T>

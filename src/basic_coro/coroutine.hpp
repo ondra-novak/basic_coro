@@ -11,6 +11,7 @@
 namespace coro {
 
 template<typename T> class awaitable;
+template<typename T> class pending;
 template<typename T> class awaitable_result;
 
 namespace details {
@@ -262,6 +263,10 @@ public:
      * @return awaitable which returns true - detached, false - not detached
      */
     static detached_test_awaitable is_detached() {return {};}
+
+     auto launch() {
+        return pending<awaitable<T> >(std::move(*this));
+    }
 protected:
 
     promise_type *_coro = nullptr;

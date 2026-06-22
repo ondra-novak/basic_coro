@@ -264,6 +264,7 @@ public:
      */
     static detached_test_awaitable is_detached() {return {};}
 
+    ///Start coroutine immediately and return coro::pending instance to synchronize at the end
      auto launch() {
         return pending<awaitable<T> >(std::move(*this));
     }

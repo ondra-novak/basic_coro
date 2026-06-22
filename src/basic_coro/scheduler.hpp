@@ -204,7 +204,7 @@ public:
             _current_time = target_time;
             return {};
         }
-        _current_time = std::max(target_time,*n);
+        _current_time = std::min(target_time,*n);
         result_object r = _sch.remove_first();
         return r(true);
      }

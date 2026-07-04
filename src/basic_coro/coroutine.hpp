@@ -1,5 +1,6 @@
 #pragma once
 
+#include "basic_coro/prepared_coro.hpp"
 #include "concepts.hpp"
 #include "allocator.hpp"
 #include "exceptions.hpp"
@@ -268,6 +269,13 @@ public:
      auto launch() {
         return pending<awaitable<T> >(std::move(*this));
     }
+
+    ///Start coroutine immediately and return coro::pending instance to synchronize at the end
+    template<std::invocable<prepared_coro> _Executor>
+    auto launch(_Executor &&exec) {
+        return pending<awaitable<T> >(std::move(*this), std::forward<_Executor>(exec));
+    }
+
 protected:
 
     promise_type *_coro = nullptr;

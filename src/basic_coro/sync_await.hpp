@@ -60,7 +60,7 @@ inline decltype(auto) sync_await(T &&awt) {
         call_await_suspend(awaiter, sf.create_handle());
         sf.wait();
     }
-    return awt.await_resume();    
+    return awaiter.await_resume();    
 }
 
 
